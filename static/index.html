@@ -1,0 +1,965 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipForge</title>
+<style>
+  :root{
+    --bg:#070810; --bg2:#0b0e18;
+    --panel:rgba(20,24,34,.72); --panel2:rgba(27,33,46,.85); --glass:rgba(255,255,255,.04);
+    --edge:rgba(255,255,255,.09); --edge2:rgba(255,255,255,.14);
+    --txt:#eef2f9; --muted:#8b93a7; --faint:#5b6476;
+    --accent:#6ea8ff; --accent2:#9b7bff; --accent3:#4ee6c6;
+    --good:#3ecf8e; --bad:#ff6b6b; --warn:#ffb454; --radius:16px;
+    --shadow:0 10px 40px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--txt);
+    font:15px/1.55 "Inter",system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; min-height:100vh; position:relative; overflow-x:hidden;
+  }
+  /* aurora background */
+  .aurora{position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none}
+  .aurora::before,.aurora::after{
+    content:"";position:absolute;width:60vw;height:60vw;border-radius:50%;
+    filter:blur(90px);opacity:.35;mix-blend-mode:screen;
+  }
+  .aurora::before{background:radial-gradient(circle,#6ea8ff,transparent 60%);top:-18vw;left:-8vw;animation:drift1 22s ease-in-out infinite}
+  .aurora::after{background:radial-gradient(circle,#9b7bff,transparent 60%);bottom:-22vw;right:-10vw;animation:drift2 26s ease-in-out infinite}
+  .aurora i{position:absolute;width:40vw;height:40vw;border-radius:50%;filter:blur(80px);opacity:.22;
+    background:radial-gradient(circle,#4ee6c6,transparent 60%);top:30vh;right:20vw;animation:drift3 30s ease-in-out infinite;mix-blend-mode:screen}
+  @keyframes drift1{50%{transform:translate(8vw,6vh) scale(1.15)}}
+  @keyframes drift2{50%{transform:translate(-7vw,-5vh) scale(1.1)}}
+  @keyframes drift3{50%{transform:translate(-10vw,8vh) scale(1.2)}}
+  body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:linear-gradient(180deg,rgba(7,8,16,.2),rgba(7,8,16,.85))}
+
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{
+    padding:16px 22px; border-bottom:1px solid var(--edge);
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    position:sticky; top:0; background:rgba(7,8,16,.72); backdrop-filter:blur(14px) saturate(140%); z-index:30;
+  }
+  .brand{font-weight:800; font-size:21px; letter-spacing:-.4px; display:flex; align-items:center; gap:11px}
+  .brand .logo{width:26px;height:26px;border-radius:8px;position:relative;
+    background:linear-gradient(135deg,var(--accent),var(--accent2) 55%,var(--accent3));
+    box-shadow:0 0 18px rgba(110,168,255,.5);display:grid;place-items:center}
+  .brand .logo::before{content:"";width:0;height:0;border-left:7px solid #06101f;border-top:5px solid transparent;border-bottom:5px solid transparent;margin-left:2px}
+  .brand .grad{background:linear-gradient(90deg,#cfe0ff,#b9a8ff 60%,#8ef0dc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .tagline{font-size:12.5px;color:var(--muted)}
+  .wrap{max-width:1240px; margin:0 auto; padding:22px 16px 90px}
+
+  .panel{background:var(--panel); border:1px solid var(--edge); border-radius:var(--radius);
+    padding:18px; backdrop-filter:blur(10px); box-shadow:var(--shadow)}
+  .panel.hero{background:linear-gradient(135deg,rgba(110,168,255,.08),rgba(155,123,255,.05));border-color:var(--edge2)}
+  .row{display:flex; gap:11px; flex-wrap:wrap; align-items:center}
+  label.fld{display:flex; flex-direction:column; gap:6px; font-size:11.5px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.5px; font-weight:600; flex:1 1 200px}
+  input,select,textarea,button{font:inherit; color:var(--txt)}
+  input[type=text],input[type=url],input:not([type]),select,textarea{
+    background:rgba(10,12,20,.6); border:1px solid var(--edge); border-radius:11px;
+    padding:11px 13px; width:100%; outline:none; transition:.15s;
+  }
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(110,168,255,.15)}
+  textarea{resize:vertical; min-height:72px; line-height:1.5}
+  button{
+    background:var(--glass); border:1px solid var(--edge); border-radius:11px;
+    padding:11px 15px; cursor:pointer; transition:.15s; white-space:nowrap; font-weight:550;
+  }
+  button:hover:not(:disabled){border-color:var(--edge2); color:#fff; transform:translateY(-1px);background:rgba(255,255,255,.07)}
+  button:active:not(:disabled){transform:translateY(0)}
+  button:disabled{opacity:.45; cursor:not-allowed}
+  button.primary{background:linear-gradient(135deg,var(--accent),var(--accent2)); border:none; color:#06101f; font-weight:700;
+    box-shadow:0 6px 20px rgba(110,168,255,.3)}
+  button.primary:hover:not(:disabled){box-shadow:0 8px 26px rgba(110,168,255,.45);color:#06101f}
+  button.ghost{background:transparent}
+  button.sm{padding:8px 11px; font-size:13px}
+  button.danger{color:#ffb4b4;border-color:rgba(255,107,107,.3)}
+  button.danger:hover:not(:disabled){border-color:var(--bad);background:rgba(255,107,107,.1);color:#fff}
+  button.icon{padding:6px 9px;font-size:13px;line-height:1}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .muted{color:var(--muted)}
+  .pill{font-size:11.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--edge);background:var(--glass);font-weight:600}
+  .pill.ready{color:var(--good);border-color:rgba(62,207,142,.4);background:rgba(62,207,142,.08)}
+  .pill.error{color:var(--bad);border-color:rgba(255,107,107,.4);background:rgba(255,107,107,.08)}
+  .pill.busy{color:var(--warn);border-color:rgba(255,180,84,.4);background:rgba(255,180,84,.08)}
+  .pill.busy::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--warn);margin-right:5px;vertical-align:1px;animation:pulse 1.1s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.3}}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .metachip{font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--glass);border:1px solid var(--edge);color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .section-label{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--faint);font-weight:700}
+
+  .jobs{display:flex;gap:9px;flex-wrap:wrap;margin-top:14px}
+  .jobchip{font-size:13px;padding:7px 8px 7px 13px;border-radius:999px;border:1px solid var(--edge);
+    background:var(--glass);cursor:pointer;display:flex;gap:8px;align-items:center;transition:.15s}
+  .jobchip:hover{border-color:var(--edge2);background:rgba(255,255,255,.06)}
+  .jobchip.active{border-color:var(--accent);color:#fff;background:linear-gradient(135deg,rgba(110,168,255,.18),rgba(155,123,255,.12))}
+  .jobchip .label{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .jobchip .del{border:none;background:transparent;color:var(--faint);padding:2px 5px;border-radius:50%;font-size:14px;line-height:1;cursor:pointer}
+  .jobchip .del:hover{color:var(--bad);background:rgba(255,107,107,.15);transform:none}
+
+  #stage{margin-top:16px;display:none}
+  #stage.show{display:block}
+  .stepper{display:flex;gap:6px;margin-top:10px}
+  .step{flex:1;display:flex;flex-direction:column;gap:5px;align-items:center;font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+  .step .dot{width:100%;height:5px;border-radius:999px;background:rgba(255,255,255,.08);transition:.4s}
+  .step.done .dot{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .step.active .dot{background:linear-gradient(90deg,var(--accent),var(--accent2));box-shadow:0 0 12px rgba(110,168,255,.6);animation:pulse 1.2s ease-in-out infinite}
+  .step.done,.step.active{color:var(--txt)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px;margin-top:20px}
+  .card{background:var(--panel);border:1px solid var(--edge);border-radius:var(--radius);
+    overflow:hidden;display:flex;flex-direction:column;backdrop-filter:blur(10px);transition:.2s;box-shadow:var(--shadow)}
+  .card:hover{border-color:var(--edge2);transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,.5)}
+  .card .vidwrap{position:relative;background:#000}
+  .card video{width:100%;aspect-ratio:9/16;background:#000;display:block;max-height:62vh}
+  .card .badge{position:absolute;top:10px;left:10px;font-size:11px;padding:4px 9px;border-radius:8px;
+    background:rgba(7,8,16,.7);backdrop-filter:blur(6px);border:1px solid var(--edge);font-variant-numeric:tabular-nums}
+  .card .body{padding:14px 15px;display:flex;flex-direction:column;gap:11px}
+  .card h3{margin:0;font-size:16.5px;line-height:1.3;letter-spacing:-.2px}
+  .reason{color:var(--muted);font-size:13px;margin:0}
+  .ctrls{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--edge);padding-top:12px}
+  .grow{flex:1 1 auto !important}
+
+  details.sec{border:1px solid var(--edge);border-radius:12px;background:rgba(10,12,20,.4);overflow:hidden}
+  details.sec summary{cursor:pointer;padding:11px 13px;font-size:13px;font-weight:600;color:var(--muted);user-select:none;
+    display:flex;align-items:center;gap:8px;list-style:none}
+  details.sec summary::-webkit-details-marker{display:none}
+  details.sec summary::before{content:"▸";color:var(--faint);transition:.2s}
+  details.sec[open] summary::before{transform:rotate(90deg)}
+  details.sec[open] summary{color:var(--txt);border-bottom:1px solid var(--edge)}
+  details.sec .inner{display:flex;flex-direction:column;gap:10px;padding:13px}
+
+  .goals{display:flex;gap:6px}
+  .goals button{flex:1;padding:7px 4px;font-size:12px;border-radius:9px}
+  .goals button.on{background:linear-gradient(135deg,rgba(110,168,255,.25),rgba(155,123,255,.18));border-color:var(--accent);color:#fff}
+  .fieldcap{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+  .copybtn{border:none;background:var(--glass);color:var(--muted);font-size:11px;padding:3px 8px;border-radius:7px;cursor:pointer}
+  .copybtn:hover{color:#fff;background:rgba(255,255,255,.1);transform:none}
+  .hashwrap{display:flex;gap:6px;flex-wrap:wrap}
+  .hash{font-size:12px;padding:3px 9px;border-radius:999px;background:rgba(110,168,255,.1);border:1px solid rgba(110,168,255,.25);color:#bcd4ff;cursor:pointer}
+  .hash:hover{background:rgba(110,168,255,.2)}
+  /* studio controls */
+  label.tog{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;flex:0 0 auto}
+  label.tog input{accent-color:var(--accent);width:15px;height:15px}
+  .rangewrap{display:flex;align-items:center;gap:10px}
+  .rangewrap input[type=range]{flex:1 1 auto;accent-color:var(--accent)}
+  .rangewrap .metachip{flex:0 0 96px;text-align:center}
+  .assist-out:empty{display:none}
+  .assist-card{display:flex;flex-direction:column;gap:9px;padding:11px;border-radius:11px;background:var(--glass);border:1px solid var(--edge)}
+  .assist-row{display:flex;flex-direction:column;gap:4px}
+  .assist-line{font-size:12.5px;color:var(--txt)}
+  .assist-idea{font-size:12px;color:var(--muted)}
+
+  #toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:10px;z-index:60;max-width:min(400px,90vw)}
+  .toast{padding:12px 15px;border-radius:12px;border:1px solid var(--edge);background:var(--panel2);
+    box-shadow:0 10px 30px rgba(0,0,0,.5);animation:tin .2s ease;font-size:14px;backdrop-filter:blur(12px)}
+  .toast.good{border-color:rgba(62,207,142,.5)}
+  .toast.bad{border-color:rgba(255,107,107,.5)}
+  @keyframes tin{from{opacity:0;transform:translateY(10px)}}
+  .empty{color:var(--muted);text-align:center;padding:56px 10px}
+  .empty .big{font-size:40px;margin-bottom:10px;opacity:.5}
+
+  /* live thumbnail preview */
+  .thumb{display:none;margin-top:14px;border-radius:12px;overflow:hidden;border:1px solid var(--edge);position:relative;max-width:340px}
+  .thumb.show{display:block;animation:tin .25s ease}
+  .thumb img{width:100%;display:block;aspect-ratio:16/9;object-fit:cover}
+  .thumb .play{position:absolute;inset:0;display:grid;place-items:center;background:rgba(5,6,12,.25)}
+  .thumb .play::before{content:"";width:0;height:0;border-left:20px solid #fff;border-top:13px solid transparent;border-bottom:13px solid transparent;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6))}
+
+  /* staggered card entrance */
+  .card{animation:cardin .45s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes cardin{from{opacity:0;transform:translateY(16px) scale(.98)}}
+  @media (prefers-reduced-motion:reduce){.card,.aurora::before,.aurora::after,.aurora i{animation:none}}
+
+  .dlbtn{display:inline-flex;align-items:center;gap:6px}
+  kbd{font:12px ui-monospace,Menlo,monospace;background:var(--glass);border:1px solid var(--edge);border-bottom-width:2px;border-radius:6px;padding:1px 6px;color:var(--muted)}
+  .elapsed{font-variant-numeric:tabular-nums}
+
+  /* modal */
+  #modal{position:fixed;inset:0;z-index:80;display:none;place-items:center;background:rgba(5,6,12,.72);backdrop-filter:blur(6px)}
+  #modal.show{display:grid}
+  .modalbox{background:var(--panel2);border:1px solid var(--edge2);border-radius:16px;padding:22px;max-width:380px;width:92vw;box-shadow:var(--shadow)}
+  .modalbox h3{margin:0 0 8px;font-size:17px}
+  .modalbox p{margin:0 0 18px;color:var(--muted);font-size:14px;line-height:1.5}
+  .modalbox .row{justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="aurora"><i></i></div>
+
+<header>
+  <div class="brand"><span class="logo"></span><span class="grad">ClipForge</span></div>
+  <div class="tagline">YouTube → viral vertical clips → edit → Resolve / YouTube</div>
+</header>
+
+<div class="wrap">
+  <!-- generate -->
+  <div class="panel hero">
+    <div class="row">
+      <label class="fld" style="flex:3 1 320px">YouTube URL
+        <input id="url" type="url" placeholder="https://www.youtube.com/watch?v=…">
+      </label>
+      <label class="fld" style="flex:0 1 110px">Clips
+        <input id="count" type="text" inputmode="numeric" placeholder="6">
+      </label>
+      <label class="fld" style="flex:2 1 220px">Guidance (optional)
+        <input id="guidance" type="text" placeholder="focus on roasts, shorter clips…">
+      </label>
+      <div style="display:flex;align-items:flex-end">
+        <button id="gen" class="primary">✦ Generate clips</button>
+      </div>
+    </div>
+    <a id="thumb" class="thumb" target="_blank" rel="noopener"><img alt="video thumbnail"><span class="play"></span></a>
+    <div class="muted" style="font-size:12px;margin-top:10px">Tip: press <kbd>g</kbd> to focus the URL · <kbd>Enter</kbd> to generate</div>
+    <div id="stage">
+      <div class="row" style="justify-content:space-between">
+        <span id="stageText" class="muted">Working…</span>
+        <span id="stagePill" class="pill busy">queued</span>
+      </div>
+      <div id="stepper" class="stepper"></div>
+    </div>
+  </div>
+
+  <!-- job switcher -->
+  <div class="panel" style="margin-top:16px">
+    <div class="row" style="justify-content:space-between">
+      <span class="section-label">Jobs</span>
+      <button id="refreshJobs" class="ghost sm">↻ Refresh</button>
+    </div>
+    <div id="jobs" class="jobs"><span class="muted">Loading…</span></div>
+  </div>
+
+  <!-- current job header -->
+  <div id="jobHead" class="row" style="margin-top:22px;justify-content:space-between;display:none">
+    <div>
+      <h2 id="jobTitle" style="margin:0;font-size:19px;letter-spacing:-.3px"></h2>
+      <div id="jobMeta" class="chips" style="margin-top:7px"></div>
+    </div>
+    <div class="row" style="flex:0 0 auto">
+      <button id="pushAll" class="sm">⇪ Push all to Resolve</button>
+      <button id="delJob" class="sm danger">🗑 Delete job</button>
+    </div>
+  </div>
+
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">
+    <div class="big">🎬</div>No clips yet. Paste a YouTube URL above and hit Generate.
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<!-- confirm modal -->
+<div id="modal">
+  <div class="modalbox">
+    <h3 id="modalTitle">Confirm</h3>
+    <p id="modalMsg"></p>
+    <div class="row">
+      <button id="modalCancel" class="ghost sm">Cancel</button>
+      <button id="modalOk" class="sm danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const DEMO_JOB = "demo-igl-ep8";
+let currentJob = null;
+let pollTimer = null;
+let ASSETS = {luts:[], music:[], _loaded:false};
+async function loadAssets(){
+  if(ASSETS._loaded) return ASSETS;
+  try{
+    const a = await api("GET","/api/assets");
+    ASSETS.luts = (a&&a.luts)||[]; ASSETS.music = (a&&a.music)||[];
+  }catch(e){ /* non-fatal; pickers just show None */ }
+  ASSETS._loaded = true;
+  return ASSETS;
+}
+
+// ---------- tiny helpers ----------
+const $ = sel => document.querySelector(sel);
+function el(tag, attrs, kids){
+  const n = document.createElement(tag);
+  if(attrs) for(const k in attrs){
+    if(k==="class") n.className=attrs[k];
+    else if(k==="html") n.innerHTML=attrs[k];
+    else if(k==="text") n.textContent=attrs[k];
+    else n.setAttribute(k, attrs[k]);
+  }
+  (kids||[]).forEach(c=>n.appendChild(typeof c==="string"?document.createTextNode(c):c));
+  return n;
+}
+function toast(msg, kind){
+  const t = el("div",{class:"toast "+(kind||"")});
+  t.textContent = msg;
+  $("#toasts").appendChild(t);
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, kind==="bad"?6000:3500);
+}
+function fmtTime(s){
+  s = Math.max(0, Math.round(Number(s)||0));
+  const m = Math.floor(s/60), r = s%60;
+  return m+":"+String(r).padStart(2,"0");
+}
+function ytId(url){
+  if(!url) return "";
+  let m = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{6,})/);
+  if(m) return m[1];
+  m = url.match(/[?&]v=([A-Za-z0-9_-]{6,})/);
+  return m ? m[1] : "";
+}
+function updateThumb(){
+  const id = ytId(($("#url").value||"").trim());
+  const t = $("#thumb");
+  if(id){
+    t.querySelector("img").src = "https://img.youtube.com/vi/"+id+"/hqdefault.jpg";
+    t.href = "https://www.youtube.com/watch?v="+id;
+    t.classList.add("show");
+  }else{ t.classList.remove("show"); }
+}
+// pause every other clip video when one starts playing
+function soloPlay(playing){
+  document.querySelectorAll(".card video").forEach(v=>{ if(v!==playing && !v.paused) v.pause(); });
+}
+async function copy(text, btn){
+  try{
+    if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(text); }
+    else{ const ta=el("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+    if(btn){ const o=btn.textContent; btn.textContent="✓ copied"; setTimeout(()=>btn.textContent=o,1200); }
+  }catch(e){ toast("Copy failed","bad"); }
+}
+// confirm modal -> Promise<bool>
+function confirmModal(title, msg, okLabel){
+  return new Promise(resolve=>{
+    $("#modalTitle").textContent = title;
+    $("#modalMsg").textContent = msg;
+    $("#modalOk").textContent = okLabel||"Delete";
+    const m = $("#modal"); m.classList.add("show");
+    const done = v=>{ m.classList.remove("show"); $("#modalOk").onclick=null; $("#modalCancel").onclick=null; resolve(v); };
+    $("#modalOk").onclick = ()=>done(true);
+    $("#modalCancel").onclick = ()=>done(false);
+    m.onclick = e=>{ if(e.target===m) done(false); };
+  });
+}
+async function parse(res){
+  let data=null, text="";
+  try{ text = await res.text(); data = text ? JSON.parse(text) : null; }catch(e){ /* non-json */ }
+  if(!res.ok){
+    const detail = (data && (data.detail||data.error||data.message)) || text || (res.status+" "+res.statusText);
+    const err = new Error(typeof detail==="string"?detail:(detail&&detail.error)||JSON.stringify(detail));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+async function api(method, path, body){
+  const opt = {method, headers:{}};
+  if(body!==undefined){ opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
+  const res = await fetch(path, opt);
+  return parse(res);
+}
+async function withBtn(btn, label, fn){
+  if(btn.dataset.busy) return;
+  btn.dataset.busy="1";
+  const orig = btn.innerHTML, wasDisabled = btn.disabled;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>'+(label||"");
+  try{ return await fn(); }
+  finally{ btn.innerHTML=orig; btn.disabled=wasDisabled; delete btn.dataset.busy; }
+}
+
+// ---------- jobs list ----------
+async function loadJobs(){
+  try{
+    const jobs = await api("GET","/api/jobs");
+    const box = $("#jobs"); box.innerHTML="";
+    const list = Array.isArray(jobs)?jobs:(jobs&&jobs.jobs)||[];
+    if(!list.length){ box.appendChild(el("span",{class:"muted",text:"No jobs yet."})); return; }
+    list.forEach(j=>{
+      const chip = el("div",{class:"jobchip"+(j.id===currentJob?" active":"")});
+      chip.appendChild(el("span",{class:"label",text:j.title||j.id}));
+      const statusCls = j.status==="ready"?"ready":(j.status==="error"?"error":"busy");
+      chip.appendChild(el("span",{class:"pill "+statusCls, text:j.status||"?"}));
+      const del = el("button",{class:"del",title:"Delete job","aria-label":"Delete job",html:"&times;"});
+      del.onclick = (e)=>{ e.stopPropagation(); deleteJob(j); };
+      chip.appendChild(del);
+      chip.onclick = ()=>loadJob(j.id);
+      box.appendChild(chip);
+    });
+  }catch(e){
+    $("#jobs").innerHTML="";
+    $("#jobs").appendChild(el("span",{class:"muted",text:"Could not load jobs: "+e.message}));
+  }
+}
+
+async function deleteJob(j){
+  const name = j.title || j.id;
+  const ok = await confirmModal("Delete job?", "“"+name+"” and all its rendered clips will be permanently removed.", "Delete");
+  if(!ok) return;
+  try{
+    await api("DELETE","/api/jobs/"+encodeURIComponent(j.id));
+    toast("Job deleted.","good");
+    if(currentJob===j.id){ stopPoll(); currentJob=null; $("#jobHead").style.display="none"; $("#grid").innerHTML=""; }
+    await loadJobs();
+    if(currentJob===null){ loadJob(DEMO_JOB); }
+  }catch(e){
+    toast("Delete failed: "+e.message,"bad");
+  }
+}
+
+// ---------- load + render a single job ----------
+async function loadJob(id){
+  currentJob = id;
+  stopPoll();
+  loadAssets();
+  await loadJobs();
+  try{
+    const data = await api("GET","/api/jobs/"+encodeURIComponent(id));
+    renderJob(data);
+    const {job} = jobFields(data);
+    if(job.status && job.status!=="ready" && job.status!=="error"){ showStage(job.status, job.error); startPoll(id); }
+    else hideStage();
+  }catch(e){
+    toast("Load job failed: "+e.message,"bad");
+  }
+}
+
+function jobFields(data){
+  const job = data.job || data.job_json || (data && data.id!==undefined?data:{}) || {};
+  const clips = data.clips || data.clips_json || (Array.isArray(data)?data:[]) || [];
+  return {job, clips: Array.isArray(clips)?clips:[]};
+}
+
+function renderJob(data){
+  const {job, clips} = jobFields(data);
+  $("#jobHead").style.display = "flex";
+  $("#jobTitle").textContent = job.title || currentJob || "";
+  const meta = $("#jobMeta"); meta.innerHTML="";
+  const statusCls = job.status==="ready"?"ready":(job.status==="error"?"error":"busy");
+  if(job.status) meta.appendChild(el("span",{class:"pill "+statusCls,text:job.status}));
+  if(job.duration) meta.appendChild(el("span",{class:"metachip",text:fmtTime(job.duration)+" source"}));
+  meta.appendChild(el("span",{class:"metachip",text:clips.length+" clip"+(clips.length===1?"":"s")}));
+  if(job.error) meta.appendChild(el("span",{class:"pill error",text:"error: "+job.error}));
+
+  const grid = $("#grid"); grid.innerHTML="";
+  if(!clips.length){ $("#empty").style.display="block"; return; }
+  $("#empty").style.display="none";
+  clips.forEach((c,i)=>{
+    const card = renderCard(c);
+    card.style.animationDelay = Math.min(i*60,480)+"ms";
+    grid.appendChild(card);
+  });
+}
+
+function mediaUrl(file, bust){
+  const clean = String(file||"").replace(/^\/+/,"");
+  let u = "/api/jobs/"+encodeURIComponent(currentJob)+"/media/"+clean;
+  if(bust) u += (u.includes("?")?"&":"?")+"t="+Date.now();
+  return u;
+}
+
+function metaLine(render){
+  return (render.mode||"blurpad")
+    + (render.captions?" · captions":"")
+    + (render.audio?" · enhanced":"")
+    + (render.lut?(" · "+String(render.lut).replace(/\.cube$/i,"")):"")
+    + (render.music?" · music":"")
+    + (render.speed&&render.speed!==1?(" · "+render.speed+"x"):"")
+    + (render.zoom&&render.zoom!==1?(" · zoom "+render.zoom):"");
+}
+
+function renderCard(clip){
+  const render = clip.render||{};
+  const card = el("div",{class:"card"});
+  card.dataset.slug = clip.slug;
+
+  // video + time badge
+  const vw = el("div",{class:"vidwrap"});
+  const vid = el("video",{controls:"",preload:"metadata",playsinline:""});
+  if(clip.file){ vid.src = mediaUrl(clip.file); }
+  vid.addEventListener("play",()=>soloPlay(vid));
+  vw.appendChild(vid);
+  vw.appendChild(el("div",{class:"badge",text:fmtTime(clip.start)+" – "+fmtTime(clip.end)}));
+  card.appendChild(vw);
+
+  const body = el("div",{class:"body"});
+  body.appendChild(el("h3",{text:clip.title||clip.slug||"(untitled)"}));
+  body.appendChild(el("p",{class:"reason",text:clip.reason||""}));
+  const chips = el("div",{class:"chips"});
+  chips.appendChild(el("span",{class:"metachip",text:metaLine(render)}));
+  body.appendChild(chips);
+  if(clip._render_error) body.appendChild(el("div",{class:"pill error",text:clip._render_error}));
+
+  const ctrls = el("div",{class:"ctrls"});
+
+  // edit row
+  const editInput = el("input",{type:"text",class:"grow",placeholder:'natural-language edit: "5s shorter, add captions, crop to speaker"'});
+  const editBtn = el("button",{class:"sm primary",text:"Apply"});
+  const editRow = el("div",{class:"row"});
+  editInput.style.flex="1 1 auto";
+  editRow.appendChild(editInput); editRow.appendChild(editBtn);
+  editBtn.onclick = ()=>applyEdit(clip, editInput, editBtn, card);
+  editInput.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); editBtn.click(); }});
+  ctrls.appendChild(editRow);
+
+  // render + resolve row
+  const actRow = el("div",{class:"row"});
+  const renderBtn = el("button",{class:"sm",text:"⟳ Re-render"});
+  renderBtn.onclick = ()=>reRender(clip, renderBtn, card);
+  const resolveBtn = el("button",{class:"sm",text:"⇪ Resolve"});
+  resolveBtn.onclick = ()=>pushResolve(clip, resolveBtn);
+  actRow.appendChild(renderBtn); actRow.appendChild(resolveBtn);
+  if(clip.file){
+    const dl = el("a",{class:"sm dlbtn",href:mediaUrl(clip.file),download:(clip.slug||"clip")+".mp4",style:"display:inline-flex"});
+    dl.appendChild(document.createTextNode("⬇ Save"));
+    dl.setAttribute("role","button");
+    // style the anchor like a button
+    dl.classList.add("sm");
+    dl.style.cssText += ";border:1px solid var(--edge);border-radius:11px;padding:8px 11px;color:var(--txt);text-decoration:none;background:var(--glass)";
+    actRow.appendChild(dl);
+  }
+  ctrls.appendChild(actRow);
+
+  // Studio: direct look/sound controls + creative assist + export extras
+  ctrls.appendChild(buildStudioSection(clip, card));
+
+  // Captions & SEO section
+  ctrls.appendChild(buildSeoSection(clip, card));
+
+  body.appendChild(ctrls);
+  card.appendChild(body);
+  return card;
+}
+
+// ----- Studio: look / sound / extras -----
+function buildStudioSection(clip, card){
+  const r = clip.render || {};
+  const sec = el("details",{class:"sec"});
+  sec.appendChild(el("summary",{text:"🎛 Studio — look, sound & extras"}));
+  const inner = el("div",{class:"inner"});
+
+  // --- Format / look ---
+  inner.appendChild(el("div",{class:"section-label",text:"Framing"}));
+  const mode = el("select");
+  [["blurpad","Blur pad"],["centercrop","Center crop"],["facecrop","Face crop"]]
+    .forEach(([v,l])=>{ const o=el("option",{value:v,text:l}); if((r.mode||"blurpad")===v)o.selected=true; mode.appendChild(o); });
+
+  const capWrap = el("label",{class:"tog"});
+  const capCb = el("input",{type:"checkbox"}); if(r.captions) capCb.checked=true;
+  capWrap.appendChild(capCb); capWrap.appendChild(el("span",{text:"Burn captions"}));
+
+  const audWrap = el("label",{class:"tog"});
+  const audCb = el("input",{type:"checkbox"}); if(r.audio) audCb.checked=true;
+  audWrap.appendChild(audCb); audWrap.appendChild(el("span",{text:"Enhance audio"}));
+
+  const fr = el("div",{class:"row"}); mode.style.flex="1 1 auto";
+  fr.appendChild(mode); fr.appendChild(capWrap); fr.appendChild(audWrap);
+  inner.appendChild(fr);
+
+  // --- Color + music ---
+  inner.appendChild(el("div",{class:"section-label",text:"Color grade & music bed"}));
+  const lut = el("select");
+  lut.appendChild(el("option",{value:"",text:"No LUT"}));
+  (ASSETS.luts||[]).forEach(n=>{ const o=el("option",{value:n,text:String(n).replace(/\.cube$/i,"")}); if(r.lut===n)o.selected=true; lut.appendChild(o); });
+  const music = el("select");
+  music.appendChild(el("option",{value:"",text:(ASSETS.music&&ASSETS.music.length)?"No music":"No music (drop files in assets/music/)"}));
+  (ASSETS.music||[]).forEach(n=>{ const o=el("option",{value:n,text:n}); if(r.music===n)o.selected=true; music.appendChild(o); });
+  const cm = el("div",{class:"row"}); lut.style.flex="1 1 0"; music.style.flex="1 1 0";
+  cm.appendChild(lut); cm.appendChild(music);
+  inner.appendChild(cm);
+
+  // --- Motion (speed/zoom) ---
+  inner.appendChild(el("div",{class:"section-label",text:"Motion"}));
+  const mk = (label, min, max, step, val)=>{
+    const rng = el("input",{type:"range",min:min,max:max,step:step}); rng.value = val;
+    const out = el("span",{class:"metachip",text:label+" "+(+val).toFixed(2)+"×"});
+    rng.addEventListener("input",()=>out.textContent=label+" "+(+rng.value).toFixed(2)+"×");
+    const w = el("div",{class:"rangewrap"}); w.appendChild(rng); w.appendChild(out);
+    return {w, rng};
+  };
+  const sp = mk("Speed", 0.5, 2.0, 0.05, r.speed||1.0);
+  const zm = mk("Zoom", 1.0, 1.5, 0.05, r.zoom||1.0);
+  inner.appendChild(sp.w); inner.appendChild(zm.w);
+
+  const applyBtn = el("button",{class:"sm primary",text:"⟳ Apply & re-render"});
+  applyBtn.onclick = ()=>{
+    const opts = {
+      mode: mode.value,
+      captions: capCb.checked,
+      audio: audCb.checked,
+      lut: lut.value,
+      music: music.value,
+      speed: +sp.rng.value,
+      zoom: +zm.rng.value,
+    };
+    reRenderWith(clip, opts, applyBtn, card);
+  };
+  const ar = el("div",{class:"row"}); ar.appendChild(applyBtn); inner.appendChild(ar);
+
+  // --- Creative assist (free-tool search terms) ---
+  inner.appendChild(el("div",{class:"section-label",text:"Creative assist — free stock search terms"}));
+  const assistOut = el("div",{class:"assist-out"});
+  const mkAssist = (label, kind)=>{
+    const b = el("button",{class:"sm",text:label});
+    b.onclick = ()=>runAssist(clip, kind, b, assistOut);
+    return b;
+  };
+  const asr = el("div",{class:"row"});
+  asr.appendChild(mkAssist("🎞 B-roll shots","broll"));
+  asr.appendChild(mkAssist("🎵 Music ideas","music"));
+  asr.appendChild(mkAssist("🖊 Thumbnail text","thumbtext"));
+  inner.appendChild(asr);
+  inner.appendChild(assistOut);
+
+  // --- Export extras: subtitles + thumbnail ---
+  inner.appendChild(el("div",{class:"section-label",text:"Export extras"}));
+  const xr = el("div",{class:"row"});
+  const srtBase = "/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/srt";
+  const srt = el("a",{class:"sm dlbtn",href:srtBase+"?fmt=srt",download:(clip.slug||"clip")+".srt",text:"⬇ .srt"});
+  const ass = el("a",{class:"sm dlbtn",href:srtBase+"?fmt=ass",download:(clip.slug||"clip")+".ass",text:"⬇ .ass"});
+  [srt,ass].forEach(a=>{ a.style.cssText += ";border:1px solid var(--edge);border-radius:11px;padding:8px 11px;color:var(--txt);text-decoration:none;background:var(--glass);display:inline-flex"; });
+  const thumbBtn = el("button",{class:"sm",text:"🖼 Make thumbnail"});
+  const thumbOut = el("div",{class:"thumb-out"});
+  thumbBtn.onclick = ()=>makeThumb(clip, thumbBtn, thumbOut);
+  xr.appendChild(srt); xr.appendChild(ass); xr.appendChild(thumbBtn);
+  inner.appendChild(xr);
+  inner.appendChild(thumbOut);
+  if(clip.thumbnail) showThumb(thumbOut, clip.thumbnail);
+
+  sec.appendChild(inner);
+  return sec;
+}
+
+async function reRenderWith(clip, opts, btn, card){
+  await withBtn(btn,"Rendering", async()=>{
+    try{
+      const spec = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/render", opts);
+      if(spec && typeof spec==="object") Object.assign(clip, spec);
+      const fresh = renderCard(clip); card.replaceWith(fresh);
+      const v = fresh.querySelector("video"); if(v && clip.file){ v.src = mediaUrl(clip.file, true); v.load(); }
+      if(spec && spec._render_error) toast("Rendered, note: "+spec._render_error,"bad");
+      else toast("Re-rendered.","good");
+    }catch(e){ toast("Re-render failed: "+e.message,"bad"); }
+  });
+}
+
+function assistChips(terms){
+  const w = el("div",{class:"hashwrap",style:"display:flex;margin-top:6px"});
+  (terms||[]).forEach(t=>{ const c=el("span",{class:"hash",text:t,title:"click to copy"}); c.onclick=()=>copy(t); w.appendChild(c); });
+  return w;
+}
+async function runAssist(clip, kind, btn, out){
+  await withBtn(btn,"Thinking", async()=>{
+    try{
+      const d = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/assist",{kind});
+      out.innerHTML="";
+      const box = el("div",{class:"assist-card"});
+      if(kind==="broll"){
+        (d.shots||[]).forEach(s=>{
+          const row = el("div",{class:"assist-row"});
+          if(s.line) row.appendChild(el("div",{class:"assist-line",text:"“"+s.line+"”"}));
+          if(s.idea) row.appendChild(el("div",{class:"assist-idea",text:s.idea}));
+          row.appendChild(assistChips(s.search));
+          box.appendChild(row);
+        });
+      }else if(kind==="music"){
+        if(d.mood||d.genres) box.appendChild(el("div",{class:"assist-idea",text:[d.mood,(d.genres||[]).join(", ")].filter(Boolean).join(" — ")}));
+        box.appendChild(assistChips(d.search));
+        (d.cues||[]).forEach(c=>box.appendChild(el("div",{class:"assist-line",text:"• "+c})));
+      }else if(kind==="thumbtext"){
+        (d.options||[]).forEach(o=>{
+          const row = el("div",{class:"assist-row"});
+          const chip = el("span",{class:"hash",text:o.text,title:"click to copy"}); chip.onclick=()=>copy(o.text);
+          row.appendChild(chip);
+          if(o.style) row.appendChild(el("span",{class:"assist-idea",text:" "+o.style}));
+          box.appendChild(row);
+        });
+      }
+      out.appendChild(box);
+    }catch(e){ toast("Assist failed: "+e.message,"bad"); }
+  });
+}
+
+function showThumb(out, rel){
+  out.innerHTML="";
+  const img = el("img",{src:mediaUrl(rel,true),alt:"thumbnail",style:"width:100%;max-width:340px;border-radius:12px;border:1px solid var(--edge);margin-top:8px;display:block;aspect-ratio:16/9;object-fit:cover"});
+  const a = el("a",{href:mediaUrl(rel),download:"thumbnail.jpg"}); a.appendChild(img);
+  out.appendChild(a);
+}
+async function makeThumb(clip, btn, out){
+  const text = prompt("Overlay text (optional):","")||"";
+  await withBtn(btn,"Grabbing", async()=>{
+    try{
+      const d = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/thumbnail",{text:text.trim()});
+      const rel = d && (d.thumbnail || (d.clip&&d.clip.thumbnail));
+      if(d&&d.clip) Object.assign(clip, d.clip);
+      if(rel) showThumb(out, rel); else toast("No thumbnail returned.","bad");
+    }catch(e){ toast("Thumbnail failed: "+e.message,"bad"); }
+  });
+}
+
+// ----- caption / SEO + upload section -----
+function fieldWithCopy(labelText, inputEl, getVal){
+  const cap = el("div",{class:"fieldcap"});
+  cap.appendChild(el("span",{text:labelText}));
+  const cp = el("button",{class:"copybtn",text:"copy"});
+  cp.onclick = ()=>copy(getVal(), cp);
+  cap.appendChild(cp);
+  const w = el("div",{}); w.appendChild(cap); w.appendChild(inputEl);
+  return {wrap:w, cap};
+}
+
+function buildSeoSection(clip, card){
+  const meta = clip.youtube || {};
+  const sec = el("details",{class:"sec"});
+  const openAlready = !!meta.title;
+  if(openAlready) sec.setAttribute("open","");
+  sec.appendChild(el("summary",{text:"✎ Captions & YouTube SEO"}));
+  const inner = el("div",{class:"inner"});
+
+  // goal pills
+  inner.appendChild(el("div",{class:"section-label",text:"Optimize for"}));
+  const goals = el("div",{class:"goals"});
+  let goal = "growth";
+  const goalDefs = [["funnel","Funnel"],["growth","Growth"],["monetisation","Money"]];
+  const goalBtns = {};
+  goalDefs.forEach(([k,lbl])=>{
+    const b = el("button",{class:"sm"+(k===goal?" on":""),text:lbl});
+    b.onclick = ()=>{ goal=k; for(const kk in goalBtns) goalBtns[kk].classList.toggle("on",kk===goal); };
+    goalBtns[k]=b; goals.appendChild(b);
+  });
+  inner.appendChild(goals);
+
+  // title
+  const ytTitle = el("input",{type:"text",placeholder:"Video title"});
+  ytTitle.value = meta.title || clip.title || "";
+  const tf = fieldWithCopy("Title", ytTitle, ()=>ytTitle.value);
+  const titleCount = el("span",{class:"copybtn",text:""}); titleCount.style.cursor="default";
+  tf.cap.insertBefore(titleCount, tf.cap.lastChild);
+  const updCount = ()=>{ const n=ytTitle.value.length; titleCount.textContent=n+"/100"; titleCount.style.color=n>100?"var(--bad)":"var(--faint)"; };
+  ytTitle.addEventListener("input",updCount); updCount();
+  inner.appendChild(tf.wrap);
+
+  // description
+  const ytDesc = el("textarea",{placeholder:"Description"});
+  ytDesc.value = meta.description || clip.reason || "";
+  inner.appendChild(fieldWithCopy("Description", ytDesc, ()=>ytDesc.value).wrap);
+
+  // tags
+  const ytTags = el("input",{type:"text",placeholder:"tags, comma, separated"});
+  ytTags.value = (meta.tags||[]).join(", ");
+  inner.appendChild(fieldWithCopy("Tags", ytTags, ()=>ytTags.value).wrap);
+
+  // hashtags (click to copy one)
+  const hashWrap = el("div",{class:"hashwrap"});
+  function renderHashes(hs){
+    hashWrap.innerHTML="";
+    (hs||[]).forEach(h=>{
+      const chip = el("span",{class:"hash",text:h,title:"click to copy"});
+      chip.onclick = ()=>copy(h);
+      hashWrap.appendChild(chip);
+    });
+    hashWrap.style.display = (hs&&hs.length)?"flex":"none";
+  }
+  renderHashes(meta.hashtags);
+  inner.appendChild(hashWrap);
+
+  // generate SEO
+  const genBtn = el("button",{class:"sm",text:"✦ Generate captions"});
+  genBtn.onclick = ()=>generateSEO(clip, {ytTitle,ytDesc,ytTags,renderHashes,updCount}, goal, genBtn);
+
+  // upload row
+  const ytPriv = el("select");
+  ["private","unlisted","public"].forEach(p=>{ const o=el("option",{value:p,text:p}); if(p==="private")o.selected=true; ytPriv.appendChild(o); });
+  const ytBtn = el("button",{class:"sm primary",text:"▶ Upload to YouTube"});
+  ytBtn.onclick = ()=>uploadYouTube(clip, ytTitle, ytDesc, ytTags, ytPriv, ytBtn);
+
+  const r1 = el("div",{class:"row"}); r1.appendChild(genBtn);
+  const r2 = el("div",{class:"row"}); ytPriv.style.flex="0 0 130px"; ytBtn.style.flex="1 1 auto";
+  r2.appendChild(ytPriv); r2.appendChild(ytBtn);
+  inner.appendChild(r1); inner.appendChild(r2);
+
+  sec.appendChild(inner);
+  return sec;
+}
+
+// ---------- actions ----------
+async function applyEdit(clip, input, btn, card){
+  const instruction = (input.value||"").trim();
+  if(!instruction){ toast("Type an edit instruction first.","bad"); return; }
+  await withBtn(btn,"Applying", async()=>{
+    try{
+      const spec = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/edit",{instruction});
+      Object.assign(clip, spec||{});
+      // rebuild card to reflect any field changes incl. video + meta
+      const fresh = renderCard(clip); card.replaceWith(fresh);
+      input.value="";
+      if(spec && spec._render_error) toast("Edited, render note: "+spec._render_error,"bad");
+      else toast("Edit applied.","good");
+    }catch(e){ toast("Edit failed: "+e.message,"bad"); }
+  });
+}
+
+async function reRender(clip, btn, card){
+  await withBtn(btn,"Rendering", async()=>{
+    try{
+      const spec = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/render");
+      if(spec && typeof spec==="object") Object.assign(clip, spec);
+      const vid = card.querySelector("video");
+      if(vid && clip.file){ vid.src = mediaUrl(clip.file, true); vid.load(); }
+      toast("Re-rendered.","good");
+    }catch(e){ toast("Re-render failed: "+e.message,"bad"); }
+  });
+}
+
+async function pushResolve(clip, btn){
+  await withBtn(btn,"Pushing", async()=>{
+    try{
+      const r = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/resolve",{slugs:[clip.slug]});
+      toast("Pushed to Resolve"+(r&&r.timeline?(" ("+r.timeline+")"):"")+".","good");
+    }catch(e){ toast("Resolve push failed: "+e.message,"bad"); }
+  });
+}
+
+async function pushAll(btn){
+  await withBtn(btn,"Pushing", async()=>{
+    try{
+      const r = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/resolve",{});
+      toast("Pushed all clips to Resolve"+(r&&r.timeline?(" ("+r.timeline+")"):"")+".","good");
+    }catch(e){ toast("Resolve push failed: "+e.message,"bad"); }
+  });
+}
+
+async function uploadYouTube(clip, titleEl, descEl, tagsEl, privEl, btn){
+  await withBtn(btn,"Uploading", async()=>{
+    try{
+      const tags = (tagsEl.value||"").split(",").map(t=>t.trim()).filter(Boolean);
+      const body = {title:(titleEl.value||"").trim(), description:(descEl.value||"").trim(), tags, privacy:privEl.value};
+      const r = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/youtube", body);
+      const vid = r && (r.video_id||r.videoId||r.id);
+      toast(vid?("Uploaded → youtu.be/"+vid):"Upload complete.","good");
+    }catch(e){ toast("Upload failed: "+e.message,"bad"); }
+  });
+}
+
+async function generateSEO(clip, els, goal, btn){
+  await withBtn(btn,"Writing", async()=>{
+    try{
+      const r = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/metadata", {goal});
+      const m = (r && r.youtube) || {};
+      if(m.title){ els.ytTitle.value = m.title; els.updCount(); }
+      if(m.description) els.ytDesc.value = m.description;
+      if(m.tags) els.ytTags.value = m.tags.join(", ");
+      if(m.hashtags) els.renderHashes(m.hashtags);
+      if(r && r.clip) clip.youtube = r.clip.youtube;
+      toast("Captions generated ("+goal+").","good");
+    }catch(e){ toast("Generate failed: "+e.message,"bad"); }
+  });
+}
+
+// ---------- generate + poll ----------
+const STAGES = [["queued","Queued"],["downloading","Download"],["transcribing","Transcribe"],["picking","Pick"],["rendering","Render"],["ready","Ready"]];
+let stageStart = 0;
+function showStage(status, extra){
+  $("#stage").classList.add("show");
+  if(!stageStart) stageStart = Date.now();
+  // map the synthetic "waiting-transcribe" onto the Transcribe step
+  let eff = status, waiting = false;
+  if(status==="waiting-transcribe"){ eff="transcribing"; waiting=true; }
+  const stepper = $("#stepper"); stepper.innerHTML="";
+  const idx = STAGES.findIndex(s=>s[0]===eff);
+  STAGES.forEach((s,i)=>{
+    let cls="step";
+    if(status==="error"){ cls+= i<=0?" done":""; }
+    else if(idx>=0){ if(i<idx) cls+=" done"; else if(i===idx) cls+=" active"; }
+    const step = el("div",{class:cls});
+    step.appendChild(el("div",{class:"dot"}));
+    step.appendChild(el("span",{text:s[1]}));
+    stepper.appendChild(step);
+  });
+  const pill = $("#stagePill");
+  pill.textContent = waiting?"waiting":(status||"…");
+  pill.className = "pill "+(status==="ready"?"ready":(status==="error"?"error":"busy"));
+  const elapsed = stageStart ? " · "+fmtTime((Date.now()-stageStart)/1000)+" elapsed" : "";
+  $("#stageText").innerHTML = status==="error" ? ("Error: "+(extra||"")) :
+    status==="ready" ? "Done — clips below." :
+    waiting ? ('Queued behind another transcribe…<span class="elapsed">'+elapsed+'</span>') :
+    ('Stage: '+(status||"working")+'…<span class="elapsed">'+elapsed+'</span>');
+}
+function hideStage(){ $("#stage").classList.remove("show"); stageStart=0; }
+
+async function generate(btn){
+  const url = ($("#url").value||"").trim();
+  if(!url){ toast("Enter a YouTube URL.","bad"); return; }
+  const body = {url};
+  const n = parseInt(($("#count").value||"").trim(),10);
+  if(!isNaN(n) && n>0) body.n = n;
+  const g = ($("#guidance").value||"").trim();
+  if(g) body.guidance = g;
+
+  await withBtn(btn,"Starting", async()=>{
+    try{
+      const r = await api("POST","/api/jobs",body);
+      const id = r && (r.job_id||r.id);
+      if(!id) throw new Error("server did not return a job_id");
+      if(r.deduped) toast("Existing job for this video reused.","good");
+      else { toast("Job started.","good"); stageStart=0; showStage("queued"); }
+      await loadJobs();
+      loadJob(id);
+    }catch(e){ toast("Generate failed: "+e.message,"bad"); hideStage(); }
+  });
+}
+
+function startPoll(id){
+  stopPoll();
+  pollTimer = setInterval(async()=>{
+    if(currentJob!==id){ stopPoll(); return; }
+    try{
+      const data = await api("GET","/api/jobs/"+encodeURIComponent(id));
+      const {job} = jobFields(data);
+      const status = job.status||"";
+      showStage(status, job.error);
+      renderJob(data);
+      if(status==="ready"){ stopPoll(); toast("Clips ready.","good"); setTimeout(hideStage,2800); loadJobs(); }
+      else if(status==="error"){ stopPoll(); toast("Job error: "+(job.error||"unknown"),"bad"); loadJobs(); }
+    }catch(e){ /* keep polling through transient failures */ }
+  }, 2000);
+}
+function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+// ---------- wire up ----------
+$("#gen").onclick = ()=>generate($("#gen"));
+$("#url").addEventListener("keydown",e=>{ if(e.key==="Enter") $("#gen").click(); });
+$("#url").addEventListener("input", updateThumb);
+$("#url").addEventListener("paste", ()=>setTimeout(updateThumb,0));
+// press "g" anywhere (outside a field) to jump to the URL input
+document.addEventListener("keydown",e=>{
+  const tag = (e.target.tagName||"").toLowerCase();
+  if(e.key==="g" && tag!=="input" && tag!=="textarea" && tag!=="select"){
+    e.preventDefault(); $("#url").focus();
+  }
+});
+$("#refreshJobs").onclick = ()=>loadJobs();
+$("#pushAll").onclick = ()=>pushAll($("#pushAll"));
+$("#delJob").onclick = async()=>{
+  if(!currentJob) return;
+  const title = $("#jobTitle").textContent || currentJob;
+  deleteJob({id:currentJob, title});
+};
+
+(async function init(){
+  await loadJobs();
+  loadJob(DEMO_JOB);
+})();
+</script>
+</body>
+</html>
