@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipForge</title>
+<meta name="description" content="ClipForge turns a YouTube URL into auto-cut vertical viral clips — face-track reframe, virality scoring, burned captions, silence cuts — running locally on your own machine.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#06101f; --bg2:#0a1830; --panel:#0e1d38; --panel2:#112344;
+    --line:#1c355f; --ink:#eef4ff; --muted:#9fb3d1;
+    --mint:#4ee6c6; --mint2:#9af5dd; --purple:#9b7bff; --blue:#6ea8ff;
+    --coral:#ff6a3d; --pink:#ff3d7f;
+    --radius:16px; --gut:clamp(16px,5vw,64px);
+    --grad:linear-gradient(100deg,var(--mint),var(--blue) 45%,var(--purple));
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} *{animation:none!important;transition:none!important} }
+  h1,h2,h3{font-family:Sora,Inter,sans-serif;line-height:1.1;margin:0;letter-spacing:-.02em}
+  a{color:inherit;text-decoration:none}
+  p{margin:0}
+  .wrap{max-width:1180px;margin:0 auto;padding-inline:var(--gut)}
+  .grad-text{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* glow backdrop */
+  .glow{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+  .glow::before,.glow::after{content:"";position:absolute;width:60vmax;height:60vmax;border-radius:50%;filter:blur(90px);opacity:.22}
+  .glow::before{background:var(--mint);top:-20vmax;left:-10vmax}
+  .glow::after{background:var(--purple);bottom:-25vmax;right:-15vmax}
+
+  /* nav */
+  header{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);
+    background:rgba(6,16,31,.72);border-bottom:1px solid rgba(110,168,255,.12)}
+  .nav{display:flex;align-items:center;gap:20px;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-family:Sora;font-weight:800;font-size:1.15rem}
+  .logo{width:28px;height:28px;border-radius:8px;background:var(--grad);display:grid;place-items:center;flex:none}
+  .logo svg{width:16px;height:16px;display:block}
+  .nav nav{margin-left:auto;display:flex;gap:26px;font-size:.93rem;color:var(--muted)}
+  .nav nav a:hover{color:var(--ink)}
+  @media(max-width:720px){ .nav nav{display:none} }
+  .btn{display:inline-flex;align-items:center;gap:8px;font-weight:600;font-size:.93rem;
+    padding:10px 18px;border-radius:999px;border:1px solid transparent;cursor:pointer;transition:.18s;white-space:nowrap}
+  .btn-primary{background:var(--grad);color:#04101e;box-shadow:0 6px 24px rgba(78,230,198,.25)}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 30px rgba(78,230,198,.35)}
+  .btn-ghost{border-color:rgba(159,179,209,.28);color:var(--ink)}
+  .btn-ghost:hover{border-color:var(--mint);color:var(--mint)}
+
+  /* hero */
+  .hero{padding:clamp(56px,10vw,120px) 0 40px;text-align:center}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border-radius:999px;
+    border:1px solid rgba(110,168,255,.3);color:var(--mint2);font-size:.8rem;font-weight:600;
+    background:rgba(78,230,198,.07);margin-bottom:26px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 10px var(--mint);animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .hero h1{font-size:clamp(2.3rem,6.2vw,4.2rem);font-weight:800}
+  .hero h1 .grad-text{display:inline-block}
+  .hero p.sub{max-width:640px;margin:22px auto 0;color:var(--muted);font-size:clamp(1rem,2.2vw,1.22rem)}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+  .meta{margin-top:20px;color:var(--muted);font-size:.82rem}
+  .meta b{color:var(--mint2)}
+
+  /* pipeline strip */
+  .pipe{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:46px auto 0;max-width:780px}
+  .step{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:12px;
+    background:var(--panel);border:1px solid rgba(110,168,255,.14);font-weight:600;font-size:.9rem}
+  .step i{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;background:rgba(78,230,198,.12);color:var(--mint);font-style:normal;font-size:.9rem}
+  .arrow{color:var(--purple);font-size:1.2rem;line-height:1}
+  @media(max-width:560px){ .arrow{transform:rotate(90deg)} .pipe{flex-direction:column} .step{width:100%;justify-content:center} }
+
+  /* sections */
+  section{padding:clamp(56px,9vw,104px) 0}
+  .eyebrow{color:var(--mint);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:.76rem}
+  .sec-head{max-width:620px;margin-bottom:46px}
+  .sec-head h2{font-size:clamp(1.8rem,4.4vw,2.8rem);margin:14px 0 12px}
+  .sec-head p{color:var(--muted)}
+
+  /* feature grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid rgba(110,168,255,.13);
+    border-radius:var(--radius);padding:24px;transition:.2s;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-4px);border-color:rgba(78,230,198,.4)}
+  .card .ic{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+    background:rgba(155,123,255,.14);color:var(--purple);font-size:1.3rem}
+  .card:nth-child(3n+1) .ic{background:rgba(78,230,198,.14);color:var(--mint)}
+  .card:nth-child(3n+2) .ic{background:rgba(110,168,255,.14);color:var(--blue)}
+  .card:nth-child(3n) .ic{background:rgba(255,106,61,.14);color:var(--coral)}
+  .card h3{font-size:1.12rem;margin-bottom:8px}
+  .card p{color:var(--muted);font-size:.93rem}
+  .card .tags{margin-top:14px;display:flex;flex-wrap:wrap;gap:7px}
+  .tag{font-size:.74rem;color:var(--mint2);background:rgba(78,230,198,.08);
+    border:1px solid rgba(78,230,198,.2);padding:3px 9px;border-radius:999px}
+
+  /* comparison */
+  .tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid rgba(110,168,255,.15);background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:620px;font-size:.92rem}
+  th,td{padding:15px 16px;text-align:left;border-bottom:1px solid rgba(110,168,255,.1)}
+  thead th{color:var(--muted);font-weight:600;font-size:.8rem;letter-spacing:.04em;text-transform:uppercase;background:var(--bg2)}
+  thead th:first-child{position:sticky;left:0;background:var(--bg2);z-index:1}
+  tbody td:first-child{font-weight:600;color:var(--ink);position:sticky;left:0;background:var(--panel)}
+  .cf{color:var(--mint);font-weight:700}
+  .yes{color:var(--mint2)} .no{color:#6f85a6} .partial{color:var(--blue)}
+  tbody tr:hover td{background:var(--panel2)}
+  tbody tr:hover td:first-child{background:var(--panel2)}
+  .tbl-note{color:var(--muted);font-size:.78rem;margin-top:12px}
+
+  /* run locally */
+  .run{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;align-items:center}
+  @media(max-width:860px){ .run{grid-template-columns:1fr} }
+  .steps-ol{list-style:none;padding:0;margin:22px 0 0;display:grid;gap:14px}
+  .steps-ol li{display:flex;gap:14px;align-items:flex-start}
+  .steps-ol .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--grad);color:#04101e;
+    display:grid;place-items:center;font-weight:700;font-size:.82rem}
+  .steps-ol b{color:var(--ink)} .steps-ol span{color:var(--muted)}
+  .term{background:#030a15;border:1px solid rgba(110,168,255,.18);border-radius:14px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+  .term .bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid rgba(110,168,255,.12);background:#061222}
+  .term .bar i{width:11px;height:11px;border-radius:50%;background:#2a3a55;display:block}
+  .term .bar i:nth-child(1){background:#ff5f57}.term .bar i:nth-child(2){background:#febc2e}.term .bar i:nth-child(3){background:#28c840}
+  .term .bar span{margin-left:8px;color:var(--muted);font-size:.78rem;font-family:ui-monospace,monospace}
+  .term pre{margin:0;padding:18px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84rem;line-height:1.7;color:#cfe0ff}
+  .term .c-cmd{color:var(--mint2)} .term .c-cmt{color:#6f85a6} .term .c-url{color:var(--blue)}
+  .copy{float:right;margin:-6px -6px 0 0;background:rgba(78,230,198,.1);border:1px solid rgba(78,230,198,.25);
+    color:var(--mint2);font-size:.74rem;padding:5px 11px;border-radius:8px;cursor:pointer}
+  .copy:hover{background:rgba(78,230,198,.2)}
+
+  .note-card{margin-top:22px;padding:16px 18px;border-radius:12px;background:rgba(110,168,255,.07);
+    border:1px solid rgba(110,168,255,.18);color:var(--muted);font-size:.88rem}
+  .note-card b{color:var(--mint2)}
+
+  footer{border-top:1px solid rgba(110,168,255,.12);padding:40px 0;color:var(--muted);font-size:.86rem}
+  .foot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease,transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+</style>
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="ClipForge home">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#04101e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 8-16 8z"/></svg>
+      </span>
+      ClipForge
+    </a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#compare">Compare</a>
+      <a href="#run">Run it</a>
+    </nav>
+    <a class="btn btn-primary" href="#run">Run it locally</a>
+  </div>
+</header>
+
+<main id="top">
+  <!-- HERO -->
+  <section class="hero" style="padding-top:clamp(48px,8vw,96px)">
+    <div class="wrap">
+      <span class="pill"><span class="dot" aria-hidden="true"></span> Local-first · your machine, your GPU, no cloud fees</span>
+      <h1>Paste a YouTube URL.<br>Get <span class="grad-text">viral vertical clips.</span></h1>
+      <p class="sub">ClipForge auto-cuts long videos into short, ready-to-post 9:16 clips —
+        active-speaker reframing, virality scoring, burned captions and silence jump-cuts —
+        then refines any clip from a plain-English note. It runs entirely on your own machine.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#run">Run it locally →</a>
+        <a class="btn btn-ghost" href="#features">Explore features</a>
+      </div>
+      <p class="meta">Pipeline: <b>download → transcribe → highlight → render</b> · FastAPI + vanilla-JS UI · DaVinci Resolve bridge · YouTube upload</p>
+
+      <div class="pipe" role="list" aria-label="Processing pipeline">
+        <div class="step" role="listitem"><i aria-hidden="true">⬇</i> Download</div>
+        <span class="arrow" aria-hidden="true">→</span>
+        <div class="step" role="listitem"><i aria-hidden="true">✎</i> Transcribe</div>
+        <span class="arrow" aria-hidden="true">→</span>
+        <div class="step" role="listitem"><i aria-hidden="true">★</i> Highlight</div>
+        <span class="arrow" aria-hidden="true">→</span>
+        <div class="step" role="listitem"><i aria-hidden="true">▶</i> Render</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Everything in one pass</span>
+        <h2>Studio-grade editing, automated</h2>
+        <p>Each clip is scored, reframed, captioned and graded — then yours to tweak. No timeline scrubbing required.</p>
+      </div>
+      <div class="grid">
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">◎</div>
+          <h3>Active-speaker reframe</h3>
+          <p>A tiny Ultraface ONNX model finds the dominant speaker and animates the crop to follow them — real face-tracking, not a static centre-crop. Rotation-aware so portrait phone video is never over-cropped.</p>
+          <div class="tags"><span class="tag">ONNX</span><span class="tag">EMA smoothing</span><span class="tag">auto-fallback</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">★</div>
+          <h3>Virality scoring</h3>
+          <p>The highlight picker scores every clip 0–100 for predicted virality and reads out its hook, payoff and retention risk. Clips arrive sorted best-first with a colour-tiered badge.</p>
+          <div class="tags"><span class="tag">hook</span><span class="tag">payoff</span><span class="tag">retention risk</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">A</div>
+          <h3>Four caption templates</h3>
+          <p>Word-pop, karaoke sweep, Hormozi box and big-word — all burned in and dimension-parametric so nothing distorts across aspects. Power-word emphasis and auto-emoji included.</p>
+          <div class="tags"><span class="tag">word-pop</span><span class="tag">karaoke</span><span class="tag">hormozi</span><span class="tag">big-word</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">文</div>
+          <h3>Caption translation</h3>
+          <p>Line-timed captions in any target language via the shared LLM backend, with a graceful fallback to the original text when offline. Reach an audience in their language without a re-edit.</p>
+          <div class="tags"><span class="tag">any language</span><span class="tag">line-timed</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">✂</div>
+          <h3>Silence jump-cuts</h3>
+          <p>Dead-air detection trims and concatenates keep-segments, with full time-remapping of captions <em>and</em> the reframe track — so nothing desyncs. Tighter pacing, zero manual trimming.</p>
+          <div class="tags"><span class="tag">silencedetect</span><span class="tag">keep-map</span><span class="tag">synced</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">⤢</div>
+          <h3>Hook engineering</h3>
+          <p>Punch-in zoom over the opening seconds, a burned headline title card, and b-roll cutaways on clip-relative windows — the retention levers that keep viewers past the first two seconds.</p>
+          <div class="tags"><span class="tag">punch-in</span><span class="tag">title card</span><span class="tag">b-roll</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">♪</div>
+          <h3>Audio polish</h3>
+          <p>A ducked, side-chained music bed sits under the voice automatically, and an enhance chain (high-pass, denoise, compress, loudnorm) cleans the dialogue to a consistent broadcast level.</p>
+          <div class="tags"><span class="tag">ducked music</span><span class="tag">denoise</span><span class="tag">loudnorm</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">▭</div>
+          <h3>Every aspect ratio</h3>
+          <p>9:16, 4:5, 1:1 and 16:9 threaded through every filter, reframe and caption — plus multi-aspect batch export that renders one clip to several aspects in a single action.</p>
+          <div class="tags"><span class="tag">9:16</span><span class="tag">4:5</span><span class="tag">1:1</span><span class="tag">16:9</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">◧</div>
+          <h3>Free LUT grade pack</h3>
+          <p>A generated 14-LUT colour pack ships in the box, and any <code>.cube</code> you drop in is picked up too. Cinematic looks without a paid grading add-on.</p>
+          <div class="tags"><span class="tag">14 LUTs</span><span class="tag">.cube drop-in</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">↻</div>
+          <h3>Natural-language edits</h3>
+          <p>Refine any rendered clip with a plain-English instruction — change the caption style, re-time the hook, swap the aspect — then re-render just that clip. Iterate in words, not keyframes.</p>
+          <div class="tags"><span class="tag">per-clip</span><span class="tag">re-render</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">⏃</div>
+          <h3>Parallel render + live progress</h3>
+          <p>Clips render in parallel with live status polling from <code>queued</code> through <code>ready</code>. Export SRT/ASS subtitle files and auto-generated thumbnails alongside the video.</p>
+          <div class="tags"><span class="tag">parallel</span><span class="tag">SRT/ASS</span><span class="tag">thumbnails</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">⬡</div>
+          <h3>DaVinci Resolve bridge</h3>
+          <p>Push finished clips straight into DaVinci Resolve over the Windows bridge / WSL client to keep editing on a real NLE timeline. No other auto-clipper hands you an editable project.</p>
+          <div class="tags"><span class="tag">Resolve</span><span class="tag">WSL bridge</span></div>
+        </div>
+        <div class="card reveal">
+          <div class="ic" aria-hidden="true">▶</div>
+          <h3>Direct YouTube upload</h3>
+          <p>Publish a clip to YouTube with title, description, tags and privacy via the Data API v3 resumable upload — straight from the clip card, no download-then-reupload round trip.</p>
+          <div class="tags"><span class="tag">Data API v3</span><span class="tag">resumable</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how" style="background:linear-gradient(180deg,transparent,rgba(110,168,255,.04))">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">How it works</span>
+        <h2>One URL in, a reel of clips out</h2>
+        <p>A background job walks each video through four stages, and the web UI polls live status the whole way.</p>
+      </div>
+      <div class="grid">
+        <div class="card reveal"><div class="ic" aria-hidden="true">1</div><h3>Download</h3><p>Fetch the source video and extract a clean audio track to work from.</p></div>
+        <div class="card reveal"><div class="ic" aria-hidden="true">2</div><h3>Transcribe</h3><p>Turn speech into a timed transcript — the backbone for highlights and captions.</p></div>
+        <div class="card reveal"><div class="ic" aria-hidden="true">3</div><h3>Highlight</h3><p>Score the transcript for hook, payoff and retention, and pick the strongest moments.</p></div>
+        <div class="card reveal"><div class="ic" aria-hidden="true">4</div><h3>Render</h3><p>Reframe, caption, grade and export each clip in parallel — ready to post or edit.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section id="compare">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">How it compares</span>
+        <h2>Against the cloud clippers</h2>
+        <p>Opus, Vizard, Ssemble and Lakai are good hosted tools. ClipForge trades the cloud for your own machine — which changes the economics and what you can do with the output.</p>
+      </div>
+      <div class="tbl-wrap reveal">
+        <table>
+          <thead>
+            <tr><th scope="col">Capability</th><th scope="col"><span class="cf">ClipForge</span></th><th scope="col">Opus.pro</th><th scope="col">Vizard</th><th scope="col">Ssemble</th><th scope="col">Lakai</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Runs locally, no upload of your footage</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="partial">Browser</td><td class="no">No</td></tr>
+            <tr><td>Per-minute / monthly cloud fees</td><td class="yes">None</td><td class="no">Credits</td><td class="no">Minutes cap</td><td class="no">Plan</td><td class="no">Plan</td></tr>
+            <tr><td>Active-speaker face-track reframe</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="partial">Manual</td><td class="partial">Manual</td></tr>
+            <tr><td>Virality score + hook/payoff/risk read-out</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="partial">Score</td><td class="no">No</td><td class="partial">Score</td></tr>
+            <tr><td>Caption templates</td><td class="yes">4 + emphasis</td><td class="yes">Several</td><td class="yes">Several</td><td class="yes">Several</td><td class="yes">Several</td></tr>
+            <tr><td>Caption translation</td><td class="yes">Any language</td><td class="partial">Limited</td><td class="yes">Yes</td><td class="partial">Limited</td><td class="partial">Limited</td></tr>
+            <tr><td>Silence jump-cuts with synced reframe</td><td class="yes">Yes</td><td class="partial">Basic</td><td class="partial">Basic</td><td class="partial">Manual</td><td class="no">No</td></tr>
+            <tr><td>Free LUT colour-grade pack</td><td class="yes">14 + .cube</td><td class="no">No</td><td class="no">No</td><td class="partial">Filters</td><td class="no">No</td></tr>
+            <tr><td>Multi-aspect batch export</td><td class="yes">4 aspects</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="partial">Manual</td><td class="partial">Manual</td></tr>
+            <tr><td>Push to a real NLE (DaVinci Resolve)</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+            <tr><td>Direct publish to YouTube</td><td class="yes">Yes</td><td class="partial">Social</td><td class="yes">Yes</td><td class="partial">Social</td><td class="partial">Social</td></tr>
+            <tr><td>Natural-language per-clip re-edit</td><td class="yes">Yes</td><td class="no">No</td><td class="partial">Limited</td><td class="no">No</td><td class="no">No</td></tr>
+            <tr><td>Source stays private on your disk</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="partial">Browser</td><td class="no">No</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tbl-note">Competitor rows reflect typical public tiers and may change as those products update — ClipForge rows map to shipped features in this repo. Verify a competitor's current plan before relying on a cell.</p>
+    </div>
+  </section>
+
+  <!-- RUN LOCALLY -->
+  <section id="run" style="background:linear-gradient(180deg,rgba(155,123,255,.05),transparent)">
+    <div class="wrap">
+      <div class="run">
+        <div class="reveal">
+          <span class="eyebrow">Run it locally</span>
+          <h2 style="font-size:clamp(1.8rem,4.4vw,2.8rem);margin:14px 0 10px">Up in one command</h2>
+          <p style="color:var(--muted)">Everything runs on your own machine — the virtualenv ships with every dependency, so there's nothing to install first.</p>
+          <ol class="steps-ol">
+            <li><span class="n">1</span><div><b>Start the server</b> <span>— from the project root, launch the FastAPI app with the bundled virtualenv.</span></div></li>
+            <li><span class="n">2</span><div><b>Open the UI</b> <span>— visit the local URL; the pre-rendered demo job loads instantly, no API key needed.</span></div></li>
+            <li><span class="n">3</span><div><b>Paste a URL</b> <span>— add a YouTube link, watch the live pipeline, then download, refine, or publish each clip.</span></div></li>
+          </ol>
+          <div class="note-card">
+            <b>Highlight picking &amp; NL edits</b> call the Claude API — export <code>ANTHROPIC_API_KEY</code> before starting (model <code>claude-opus-4-8</code>). The demo job and existing clips work without it.
+          </div>
+        </div>
+
+        <div class="reveal">
+          <div class="term" aria-label="Terminal: start ClipForge">
+            <div class="bar"><i></i><i></i><i></i><span>bash — clipforge</span>
+              <button class="copy" type="button" id="copyBtn" aria-label="Copy start command">Copy</button>
+            </div>
+<pre id="cmd"><span class="c-cmt"># start the server (from the project root)</span>
+<span class="c-cmd">cd /home/hakuza/clipforge</span>
+<span class="c-cmd">/home/hakuza/venv/bin/python -m uvicorn server:app \
+  --host 127.0.0.1 --port 8800</span>
+
+<span class="c-cmt"># then open the UI</span>
+<span class="c-url">http://127.0.0.1:8800/</span></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="brand" style="font-size:1rem">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#04101e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 8-16 8z"/></svg></span>
+      ClipForge
+    </div>
+    <span>Local-first YouTube → short-form clip studio · FastAPI + vanilla JS</span>
+  </div>
+</footer>
+
+<script>
+  // scroll reveal
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) { els.forEach(function(e){e.classList.add('in');}); return; }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(function(e){ io.observe(e); });
+  })();
+
+  // copy start command
+  (function(){
+    var btn = document.getElementById('copyBtn');
+    if (!btn) return;
+    var cmd = 'cd /home/hakuza/clipforge\n/home/hakuza/venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8800';
+    btn.addEventListener('click', function(){
+      navigator.clipboard && navigator.clipboard.writeText(cmd).then(function(){
+        var old = btn.textContent; btn.textContent = 'Copied ✓';
+        setTimeout(function(){ btn.textContent = old; }, 1600);
+      }).catch(function(){ btn.textContent = 'Copy failed'; });
+    });
+  })();
+</script>
+</body>
+</html>

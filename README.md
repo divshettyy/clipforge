@@ -7,6 +7,16 @@ results into DaVinci Resolve, and upload them to YouTube.
 Pipeline per job: **download → extract audio → transcribe → pick highlights →
 render clips**, driven from a web UI with live status polling.
 
+### Editing / render features
+- **Framing:** blur-pad, centre-crop, and **active-speaker face-track reframe** (ONNX).
+- **Virality ranking:** highlight picker scores each clip 0–100 with hook / payoff / retention-risk read-out, best-first.
+- **Captions:** 4 burned templates (word-pop, karaoke sweep, Hormozi box, big-word), **power-word emphasis**, **auto-emoji**, and translation to any language.
+- **Silence jump-cuts:** dead-air removal with caption + reframe time-remap.
+- **Hook punch-in** zoom, **hook title card**, **b-roll** cutaways, ducked **music** bed, **audio enhance**.
+- **Aspects:** 9:16 / 4:5 / 1:1 / 16:9, with multi-aspect batch export.
+- **Colour:** free generated **LUT grade** pack (assets/luts/) + any dropped-in `.cube`.
+- **Output:** parallel render with live progress, SRT/ASS export, thumbnail generator.
+
 ## Layout
 
 - `server.py` — FastAPI app (`app`), the HTTP API + static site host.

@@ -82,6 +82,42 @@ def music_keywords(job_dir: str, clip: dict) -> dict:
     return data
 
 
+def improve_tips(job_dir: str, clip: dict) -> dict:
+    """Virality copilot: concrete, clip-specific edits to raise performance,
+    judged against this clip's transcript, score, hook and current render."""
+    title, excerpt = _ctx(job_dir, clip)
+    r = clip.get("render") or {}
+    cur = {k: r.get(k) for k in ("mode", "captions", "caption_style", "punch_in",
+                                 "trim_silence", "audio") if k in r}
+    system = (
+        "You are a short-form retention expert. Given a clip's transcript, its "
+        "predicted virality score and its current render settings, give concrete "
+        "edit changes that would raise its performance. Be specific to THIS clip, "
+        "not generic. Return ONLY JSON."
+    )
+    prompt = (
+        'Clip title: "%s"\nPredicted score: %s/100\nHook: %s\nRetention risk: %s\n'
+        "Current render settings: %s\nTranscript:\n\"\"\"%s\"\"\"\n\n"
+        "Return JSON exactly:\n"
+        '{"tips":[{"change":"imperative, <=12 words","why":"<=12 words",'
+        '"impact":"high|medium|low"}]}\n'
+        "4-6 tips, highest impact first."
+        % (title, clip.get("score", "?"), clip.get("hook", ""),
+           clip.get("retention_risk", ""), json.dumps(cur), excerpt)
+    )
+    data = _ask(prompt, system)
+    if not isinstance(data, dict) or not isinstance(data.get("tips"), list):
+        return {"tips": []}
+    tips = []
+    for t in data["tips"][:6]:
+        if not isinstance(t, dict):
+            continue
+        tips.append({"change": str(t.get("change") or "").strip(),
+                     "why": str(t.get("why") or "").strip(),
+                     "impact": str(t.get("impact") or "").strip().lower()})
+    return {"tips": tips}
+
+
 def thumbnail_text(job_dir: str, clip: dict) -> dict:
     title, excerpt = _ctx(job_dir, clip)
     system = (

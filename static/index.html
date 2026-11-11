@@ -126,6 +126,16 @@
   .card .body{padding:14px 15px;display:flex;flex-direction:column;gap:11px}
   .card h3{margin:0;font-size:16.5px;line-height:1.3;letter-spacing:-.2px}
   .reason{color:var(--muted);font-size:13px;margin:0}
+.hook{color:var(--txt);font-size:12.5px;margin:0;opacity:.85;font-weight:600}
+.analysis{display:flex;flex-wrap:wrap;gap:6px;margin:0}
+.anchip{font-size:11.5px;padding:3px 8px;border-radius:999px;border:1px solid var(--edge)}
+.anchip.good{color:#9af5dd;background:rgba(78,230,198,.1)}
+.anchip.risk{color:#ffc39a;background:rgba(255,106,61,.12)}
+.card .score{position:absolute;top:10px;right:10px;font-size:12px;font-weight:700;padding:4px 9px;border-radius:999px;color:#06110e;background:#9aa;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.card .score.hot{background:linear-gradient(135deg,#ff6a3d,#ff3d7f)}
+.card .score.good{background:linear-gradient(135deg,#4ee6c6,#36c)}
+.card .score.mid{background:#d8dde0}
+.card .score.low{background:#7c8488;color:#dfe6ea}
   .ctrls{display:flex;flex-direction:column;gap:9px;border-top:1px solid var(--edge);padding-top:12px}
   .grow{flex:1 1 auto !important}
 
@@ -250,6 +260,14 @@
     </div>
   </div>
 
+  <!-- Clip Anything: re-pick clips from a prompt, reusing the transcript -->
+  <div id="reclipBar" class="row" style="margin-top:12px;gap:8px;display:none">
+    <input id="reclipPrompt" type="text" class="grow" style="flex:1 1 auto"
+           placeholder='✨ Clip Anything — describe what to find: "the funniest roasts", "every money tip"…'>
+    <input id="reclipN" type="text" inputmode="numeric" placeholder="#" style="width:56px">
+    <button id="reclipBtn" class="sm primary">Find clips</button>
+  </div>
+
   <div id="grid" class="grid"></div>
   <div id="empty" class="empty" style="display:none">
     <div class="big">🎬</div>No clips yet. Paste a YouTube URL above and hit Generate.
@@ -275,12 +293,14 @@
 const DEMO_JOB = "demo-igl-ep8";
 let currentJob = null;
 let pollTimer = null;
-let ASSETS = {luts:[], music:[], _loaded:false};
+let ASSETS = {luts:[], music:[], broll:[], caption_styles:[], aspects:[], _loaded:false};
 async function loadAssets(){
   if(ASSETS._loaded) return ASSETS;
   try{
     const a = await api("GET","/api/assets");
     ASSETS.luts = (a&&a.luts)||[]; ASSETS.music = (a&&a.music)||[];
+    ASSETS.broll = (a&&a.broll)||[]; ASSETS.caption_styles = (a&&a.caption_styles)||["word-pop","karaoke","hormozi","big"];
+    ASSETS.aspects = (a&&a.aspects)||["9:16","4:5","1:1","16:9"];
   }catch(e){ /* non-fatal; pickers just show None */ }
   ASSETS._loaded = true;
   return ASSETS;
@@ -408,7 +428,7 @@ async function deleteJob(j){
   try{
     await api("DELETE","/api/jobs/"+encodeURIComponent(j.id));
     toast("Job deleted.","good");
-    if(currentJob===j.id){ stopPoll(); currentJob=null; $("#jobHead").style.display="none"; $("#grid").innerHTML=""; }
+    if(currentJob===j.id){ stopPoll(); currentJob=null; $("#jobHead").style.display="none"; $("#reclipBar").style.display="none"; $("#grid").innerHTML=""; }
     await loadJobs();
     if(currentJob===null){ loadJob(DEMO_JOB); }
   }catch(e){
@@ -450,6 +470,7 @@ function renderJob(data){
   meta.appendChild(el("span",{class:"metachip",text:clips.length+" clip"+(clips.length===1?"":"s")}));
   if(job.error) meta.appendChild(el("span",{class:"pill error",text:"error: "+job.error}));
 
+  $("#reclipBar").style.display = clips.length ? "flex" : "none";
   const grid = $("#grid"); grid.innerHTML="";
   if(!clips.length){ $("#empty").style.display="block"; return; }
   $("#empty").style.display="none";
@@ -489,11 +510,24 @@ function renderCard(clip){
   vid.addEventListener("play",()=>soloPlay(vid));
   vw.appendChild(vid);
   vw.appendChild(el("div",{class:"badge",text:fmtTime(clip.start)+" – "+fmtTime(clip.end)}));
+  if(typeof clip.score==="number"){
+    const s=clip.score, tier = s>=85?"hot":s>=70?"good":s>=50?"mid":"low";
+    const sb=el("div",{class:"score "+tier,text:"🔥 "+s});
+    sb.title="Predicted virality (0–100)";
+    vw.appendChild(sb);
+  }
   card.appendChild(vw);
 
   const body = el("div",{class:"body"});
   body.appendChild(el("h3",{text:clip.title||clip.slug||"(untitled)"}));
   body.appendChild(el("p",{class:"reason",text:clip.reason||""}));
+  if(clip.hook) body.appendChild(el("p",{class:"hook",text:"⚡ "+clip.hook}));
+  if(clip.payoff||clip.retention_risk){
+    const an=el("div",{class:"analysis"});
+    if(clip.payoff) an.appendChild(el("span",{class:"anchip good",text:"🎯 "+clip.payoff}));
+    if(clip.retention_risk && !/^none\.?$/i.test(clip.retention_risk)) an.appendChild(el("span",{class:"anchip risk",text:"⚠ "+clip.retention_risk}));
+    body.appendChild(an);
+  }
   const chips = el("div",{class:"chips"});
   chips.appendChild(el("span",{class:"metachip",text:metaLine(render)}));
   body.appendChild(chips);
@@ -517,7 +551,13 @@ function renderCard(clip){
   renderBtn.onclick = ()=>reRender(clip, renderBtn, card);
   const resolveBtn = el("button",{class:"sm",text:"⇪ Resolve"});
   resolveBtn.onclick = ()=>pushResolve(clip, resolveBtn);
-  actRow.appendChild(renderBtn); actRow.appendChild(resolveBtn);
+  const viralBtn = el("button",{class:"sm primary",text:"✨ Make viral"});
+  viralBtn.title = "One-click: speaker-crop, captions, hook punch-in, jump-cuts, enhanced audio";
+  const whyBtn = el("button",{class:"sm",text:"💡 Why not viral?"});
+  actRow.appendChild(viralBtn); actRow.appendChild(renderBtn); actRow.appendChild(resolveBtn); actRow.appendChild(whyBtn);
+  const improveOut = el("div",{class:"assist-out",style:"margin-top:6px"});
+  viralBtn.onclick = ()=>makeViral(clip, viralBtn, card);
+  whyBtn.onclick = ()=>runAssist(clip, "improve", whyBtn, improveOut);
   if(clip.file){
     const dl = el("a",{class:"sm dlbtn",href:mediaUrl(clip.file),download:(clip.slug||"clip")+".mp4",style:"display:inline-flex"});
     dl.appendChild(document.createTextNode("⬇ Save"));
@@ -528,6 +568,7 @@ function renderCard(clip){
     actRow.appendChild(dl);
   }
   ctrls.appendChild(actRow);
+  ctrls.appendChild(improveOut);
 
   // Studio: direct look/sound controls + creative assist + export extras
   ctrls.appendChild(buildStudioSection(clip, card));
@@ -561,9 +602,74 @@ function buildStudioSection(clip, card){
   const audCb = el("input",{type:"checkbox"}); if(r.audio) audCb.checked=true;
   audWrap.appendChild(audCb); audWrap.appendChild(el("span",{text:"Enhance audio"}));
 
-  const fr = el("div",{class:"row"}); mode.style.flex="1 1 auto";
-  fr.appendChild(mode); fr.appendChild(capWrap); fr.appendChild(audWrap);
+  const silWrap = el("label",{class:"tog"});
+  const silCb = el("input",{type:"checkbox"}); if(r.trim_silence) silCb.checked=true;
+  silWrap.appendChild(silCb); silWrap.appendChild(el("span",{text:"Cut dead air"}));
+
+  const punchWrap = el("label",{class:"tog"});
+  const punchCb = el("input",{type:"checkbox"}); if(r.punch_in) punchCb.checked=true;
+  punchWrap.appendChild(punchCb); punchWrap.appendChild(el("span",{text:"Hook punch-in"}));
+
+  const aspect = el("select");
+  const AR_LABELS = {"9:16":"9:16 Reels/Shorts","4:5":"4:5 Feed","1:1":"1:1 Square","16:9":"16:9 Wide"};
+  (ASSETS.aspects||["9:16","4:5","1:1","16:9"]).forEach(v=>{ const o=el("option",{value:v,text:AR_LABELS[v]||v}); if((r.aspect||"9:16")===v)o.selected=true; aspect.appendChild(o); });
+
+  const fr = el("div",{class:"row"}); mode.style.flex="1 1 auto"; aspect.style.flex="0 0 auto";
+  fr.appendChild(mode); fr.appendChild(aspect); fr.appendChild(capWrap); fr.appendChild(audWrap); fr.appendChild(silWrap); fr.appendChild(punchWrap);
   inner.appendChild(fr);
+
+  // --- Hook title card ---
+  inner.appendChild(el("div",{class:"section-label",text:"Hook title card (burned over first seconds)"}));
+  const tcWrap = el("label",{class:"tog"});
+  const tcCb = el("input",{type:"checkbox"}); if(r.title_card) tcCb.checked=true;
+  tcWrap.appendChild(tcCb); tcWrap.appendChild(el("span",{text:"Show"}));
+  const tcText = el("input",{type:"text",placeholder:"title card text (blank = use hook)"});
+  if(typeof r.title_card==="string") tcText.value=r.title_card;
+  const tcSecs = el("input",{type:"text",placeholder:"secs",style:"width:60px"}); tcSecs.value = r.title_secs||1.8;
+  const tr = el("div",{class:"row"}); tcText.style.flex="1 1 auto";
+  tr.appendChild(tcWrap); tr.appendChild(tcText); tr.appendChild(tcSecs);
+  inner.appendChild(tr);
+
+  // --- Caption template + language ---
+  inner.appendChild(el("div",{class:"section-label",text:"Caption template & language"}));
+  const capStyle = el("select");
+  const CS_LABELS = {"word-pop":"Word pop","karaoke":"Karaoke sweep","hormozi":"Hormozi box","big":"Big word"};
+  (ASSETS.caption_styles||["word-pop","karaoke","hormozi","big"]).forEach(v=>{
+    const o=el("option",{value:v,text:CS_LABELS[v]||v}); if((r.caption_style||"word-pop")===v)o.selected=true; capStyle.appendChild(o);
+  });
+  const capLang = el("input",{type:"text",placeholder:"translate to… (blank = original, e.g. es, hi, fr)"});
+  if(r.caption_lang) capLang.value = r.caption_lang;
+  const cr = el("div",{class:"row"}); capStyle.style.flex="1 1 0"; capLang.style.flex="1 1 0";
+  cr.appendChild(capStyle); cr.appendChild(capLang);
+  inner.appendChild(cr);
+  const emphWrap = el("label",{class:"tog"});
+  const emphCb = el("input",{type:"checkbox"}); if(r.caption_emphasis) emphCb.checked=true;
+  emphWrap.appendChild(emphCb); emphWrap.appendChild(el("span",{text:"Emphasise power words"}));
+  const emojiWrap = el("label",{class:"tog"});
+  const emojiCb = el("input",{type:"checkbox"}); if(r.caption_emoji) emojiCb.checked=true;
+  emojiWrap.appendChild(emojiCb); emojiWrap.appendChild(el("span",{text:"Auto-emoji"}));
+  const cr2 = el("div",{class:"row"}); cr2.appendChild(emphWrap); cr2.appendChild(emojiWrap);
+  inner.appendChild(cr2);
+
+  // --- B-roll cutaways (local files in assets/broll/) ---
+  inner.appendChild(el("div",{class:"section-label",text:"B-roll cutaways (assets/broll/)"}));
+  const brollRows = el("div",{class:"brollrows"});
+  const existing = Array.isArray(r.broll)?r.broll:[];
+  function addBrollRow(pre){
+    const row = el("div",{class:"row"});
+    const sel = el("select"); sel.appendChild(el("option",{value:"",text:(ASSETS.broll&&ASSETS.broll.length)?"— b-roll file —":"drop files in assets/broll/"}));
+    (ASSETS.broll||[]).forEach(n=>{ const o=el("option",{value:n,text:n}); if(pre&&pre.file===n)o.selected=true; sel.appendChild(o); });
+    const s = el("input",{type:"text",placeholder:"from s",style:"width:70px"}); if(pre&&pre.start!=null)s.value=pre.start;
+    const e = el("input",{type:"text",placeholder:"to s",style:"width:70px"}); if(pre&&pre.end!=null)e.value=pre.end;
+    const rm = el("button",{class:"sm",text:"✕"}); rm.onclick=()=>row.remove();
+    sel.style.flex="1 1 auto";
+    row.appendChild(sel); row.appendChild(s); row.appendChild(e); row.appendChild(rm);
+    row._get = ()=> sel.value ? {file:sel.value, start:parseFloat(s.value)||0, end:parseFloat(e.value)||0} : null;
+    brollRows.appendChild(row);
+  }
+  existing.forEach(addBrollRow);
+  const addBroll = el("button",{class:"sm",text:"+ b-roll"}); addBroll.onclick=()=>addBrollRow();
+  inner.appendChild(brollRows); inner.appendChild(el("div",{class:"row"},[addBroll]));
 
   // --- Color + music ---
   inner.appendChild(el("div",{class:"section-label",text:"Color grade & music bed"}));
@@ -592,6 +698,7 @@ function buildStudioSection(clip, card){
 
   const applyBtn = el("button",{class:"sm primary",text:"⟳ Apply & re-render"});
   applyBtn.onclick = ()=>{
+    const broll = Array.from(brollRows.children).map(r=>r._get&&r._get()).filter(Boolean);
     const opts = {
       mode: mode.value,
       captions: capCb.checked,
@@ -600,6 +707,16 @@ function buildStudioSection(clip, card){
       music: music.value,
       speed: +sp.rng.value,
       zoom: +zm.rng.value,
+      caption_style: capStyle.value,
+      caption_lang: capLang.value.trim(),
+      caption_emphasis: emphCb.checked,
+      caption_emoji: emojiCb.checked,
+      broll: broll,
+      aspect: aspect.value,
+      title_card: tcCb.checked ? (tcText.value.trim() || true) : "",
+      title_secs: parseFloat(tcSecs.value)||1.8,
+      trim_silence: silCb.checked,
+      punch_in: punchCb.checked,
     };
     reRenderWith(clip, opts, applyBtn, card);
   };
@@ -635,8 +752,56 @@ function buildStudioSection(clip, card){
   inner.appendChild(thumbOut);
   if(clip.thumbnail) showThumb(thumbOut, clip.thumbnail);
 
+  // --- Multi-aspect batch export ---
+  inner.appendChild(el("div",{class:"section-label",text:"Multi-aspect export"}));
+  const vr = el("div",{class:"row"});
+  const AR_LBL = {"9:16":"9:16","4:5":"4:5","1:1":"1:1","16:9":"16:9"};
+  const aspectCbs = {};
+  (ASSETS.aspects||["9:16","4:5","1:1","16:9"]).forEach(v=>{
+    const w = el("label",{class:"tog"});
+    const cb = el("input",{type:"checkbox"});
+    aspectCbs[v] = cb;
+    w.appendChild(cb); w.appendChild(el("span",{text:AR_LBL[v]||v}));
+    vr.appendChild(w);
+  });
+  const varBtn = el("button",{class:"sm",text:"⬇ Export aspects"});
+  vr.appendChild(varBtn);
+  inner.appendChild(vr);
+  const varOut = el("div",{class:"thumb-out"});
+  inner.appendChild(varOut);
+  varBtn.onclick = ()=>exportAspects(clip, aspectCbs, varBtn, varOut);
+  if(clip.variants) showVariants(varOut, clip.variants);
+
   sec.appendChild(inner);
   return sec;
+}
+
+function showVariants(out, variants){
+  out.innerHTML="";
+  const keys = Object.keys(variants||{});
+  if(!keys.length) return;
+  const row = el("div",{class:"row"});
+  keys.forEach(a=>{
+    const path = variants[a];
+    const dl = el("a",{class:"sm dlbtn",href:mediaUrl(path),download:(path.split("/").pop()||"clip.mp4"),text:"⬇ "+a});
+    dl.style.cssText += ";border:1px solid var(--edge);border-radius:11px;padding:8px 11px;color:var(--txt);text-decoration:none;background:var(--glass);display:inline-flex";
+    row.appendChild(dl);
+  });
+  out.appendChild(row);
+}
+
+async function exportAspects(clip, aspectCbs, btn, out){
+  const aspects = Object.keys(aspectCbs).filter(a=>aspectCbs[a].checked);
+  if(!aspects.length){ toast("Pick at least one aspect ratio.","bad"); return; }
+  await withBtn(btn,"Exporting", async()=>{
+    try{
+      const d = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/variants",{aspects});
+      if(d && d.clip && typeof d.clip==="object") Object.assign(clip, d.clip);
+      const variants = (d&&d.variants)||clip.variants||{};
+      showVariants(out, variants);
+      toast("Exported "+Object.keys(variants).length+" aspect(s).","good");
+    }catch(e){ toast("Export failed: "+e.message,"bad"); }
+  });
 }
 
 async function reRenderWith(clip, opts, btn, card){
@@ -652,6 +817,31 @@ async function reRenderWith(clip, opts, btn, card){
   });
 }
 
+async function makeViral(clip, btn, card){
+  await withBtn(btn,"Finishing", async()=>{
+    try{
+      const spec = await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/clips/"+encodeURIComponent(clip.slug)+"/autopilot",{preset:"viral"});
+      if(spec && typeof spec==="object") Object.assign(clip, spec);
+      const fresh = renderCard(clip); card.replaceWith(fresh);
+      const v = fresh.querySelector("video"); if(v && clip.file){ v.src = mediaUrl(clip.file, true); v.load(); }
+      if(spec && spec._render_error) toast("Finished, note: "+spec._render_error,"bad");
+      else toast("✨ Viral finish applied.","good");
+    }catch(e){ toast("Make viral failed: "+e.message,"bad"); }
+  });
+}
+async function doReclip(){
+  if(!currentJob) return;
+  const prompt = ($("#reclipPrompt").value||"").trim();
+  const body = {}; if(prompt) body.prompt = prompt;
+  const n = parseInt(($("#reclipN").value||"").trim(),10); if(!isNaN(n)&&n>0) body.n = n;
+  const btn = $("#reclipBtn");
+  await withBtn(btn,"Finding", async()=>{
+    try{
+      await api("POST","/api/jobs/"+encodeURIComponent(currentJob)+"/reclip",body);
+      toast("Finding clips…","good"); stageStart=0; showStage("picking"); startPoll(currentJob);
+    }catch(e){ toast("Clip Anything failed: "+e.message,"bad"); }
+  });
+}
 function assistChips(terms){
   const w = el("div",{class:"hashwrap",style:"display:flex;margin-top:6px"});
   (terms||[]).forEach(t=>{ const c=el("span",{class:"hash",text:t,title:"click to copy"}); c.onclick=()=>copy(t); w.appendChild(c); });
@@ -675,6 +865,17 @@ async function runAssist(clip, kind, btn, out){
         if(d.mood||d.genres) box.appendChild(el("div",{class:"assist-idea",text:[d.mood,(d.genres||[]).join(", ")].filter(Boolean).join(" — ")}));
         box.appendChild(assistChips(d.search));
         (d.cues||[]).forEach(c=>box.appendChild(el("div",{class:"assist-line",text:"• "+c})));
+      }else if(kind==="improve"){
+        const tips = (d.tips||[]);
+        if(!tips.length) box.appendChild(el("div",{class:"assist-idea",text:"No tips — this one looks solid."}));
+        tips.forEach(t=>{
+          const row = el("div",{class:"assist-row"});
+          const imp = (t.impact||"").toLowerCase();
+          row.appendChild(el("span",{class:"anchip "+(imp==="high"?"good":imp==="low"?"":"risk"),text:(imp||"tip")}));
+          if(t.change) row.appendChild(el("div",{class:"assist-line",text:t.change}));
+          if(t.why) row.appendChild(el("div",{class:"assist-idea",text:t.why}));
+          box.appendChild(row);
+        });
       }else if(kind==="thumbtext"){
         (d.options||[]).forEach(o=>{
           const row = el("div",{class:"assist-row"});
@@ -869,7 +1070,7 @@ async function generateSEO(clip, els, goal, btn){
 // ---------- generate + poll ----------
 const STAGES = [["queued","Queued"],["downloading","Download"],["transcribing","Transcribe"],["picking","Pick"],["rendering","Render"],["ready","Ready"]];
 let stageStart = 0;
-function showStage(status, extra){
+function showStage(status, extra, progress){
   $("#stage").classList.add("show");
   if(!stageStart) stageStart = Date.now();
   // map the synthetic "waiting-transcribe" onto the Transcribe step
@@ -890,10 +1091,12 @@ function showStage(status, extra){
   pill.textContent = waiting?"waiting":(status||"…");
   pill.className = "pill "+(status==="ready"?"ready":(status==="error"?"error":"busy"));
   const elapsed = stageStart ? " · "+fmtTime((Date.now()-stageStart)/1000)+" elapsed" : "";
+  let stg = status||"working";
+  if(eff==="rendering" && progress && progress.total){ stg = "rendering "+(progress.done||0)+"/"+progress.total; }
   $("#stageText").innerHTML = status==="error" ? ("Error: "+(extra||"")) :
     status==="ready" ? "Done — clips below." :
     waiting ? ('Queued behind another transcribe…<span class="elapsed">'+elapsed+'</span>') :
-    ('Stage: '+(status||"working")+'…<span class="elapsed">'+elapsed+'</span>');
+    ('Stage: '+stg+'…<span class="elapsed">'+elapsed+'</span>');
 }
 function hideStage(){ $("#stage").classList.remove("show"); stageStart=0; }
 
@@ -927,7 +1130,7 @@ function startPoll(id){
       const data = await api("GET","/api/jobs/"+encodeURIComponent(id));
       const {job} = jobFields(data);
       const status = job.status||"";
-      showStage(status, job.error);
+      showStage(status, job.error, job.render_progress);
       renderJob(data);
       if(status==="ready"){ stopPoll(); toast("Clips ready.","good"); setTimeout(hideStage,2800); loadJobs(); }
       else if(status==="error"){ stopPoll(); toast("Job error: "+(job.error||"unknown"),"bad"); loadJobs(); }
@@ -949,6 +1152,8 @@ document.addEventListener("keydown",e=>{
   }
 });
 $("#refreshJobs").onclick = ()=>loadJobs();
+$("#reclipBtn").onclick = ()=>doReclip();
+$("#reclipPrompt").addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); doReclip(); }});
 $("#pushAll").onclick = ()=>pushAll($("#pushAll"));
 $("#delJob").onclick = async()=>{
   if(!currentJob) return;

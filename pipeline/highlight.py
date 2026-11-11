@@ -85,10 +85,22 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
         "- start slightly BEFORE the setup line and end just AFTER the payoff,\n"
         "- not overlap another pick.\n"
         "%s\n"
+        "For each pick also PREDICT its short-form performance as a short-form "
+        "editor would, judging the actual content (not guessing):\n"
+        "- score: 0-100 overall virality (hook strength + payoff + "
+        "shareability + rewatch); be discerning, reserve 85+ for truly strong "
+        "moments and spread the rest.\n"
+        "- hook: the first-3-seconds hook, quoted or paraphrased in <=8 words.\n"
+        "- payoff: the moment that rewards the viewer, in <=8 words.\n"
+        "- retention_risk: the single biggest reason a viewer might swipe away, "
+        "in <=8 words (e.g. 'slow 4s intro', 'context needed', 'none').\n"
+        "- reason: one line on why it performs.\n\n"
         "Return ONLY a strict JSON array, no prose, with exactly these fields "
         "per object:\n"
         '[{"slug":"kebab-case-unique","title":"catchy human title",'
-        '"reason":"one line why it is viral","start":<seconds float>,'
+        '"reason":"one line why it is viral","hook":"first-3s hook",'
+        '"payoff":"the payoff","retention_risk":"biggest drop-off risk",'
+        '"score":<int 0-100>,"start":<seconds float>,'
         '"end":<seconds float>}]\n\n'
         "Transcript:\n%s\n"
         % (float(duration or 0.0), int(n), guidance_line, compact)
@@ -118,10 +130,20 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             k += 1
         seen_slugs.add(slug)
 
+        try:
+            score = int(round(float(item.get("score"))))
+        except (TypeError, ValueError):
+            score = 50
+        score = min(100, max(0, score))
+
         clips.append({
             "slug": slug,
             "title": title,
             "reason": str(item.get("reason") or "").strip(),
+            "hook": str(item.get("hook") or "").strip(),
+            "payoff": str(item.get("payoff") or "").strip(),
+            "retention_risk": str(item.get("retention_risk") or "").strip(),
+            "score": score,
             "start": round(start, 2),
             "end": round(end, 2),
             "render": {
@@ -136,6 +158,9 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
 
     if not clips:
         raise RuntimeError("model returned no usable clips")
+
+    # Rank best-first by predicted virality.
+    clips.sort(key=lambda c: c.get("score", 0), reverse=True)
 
     out_path = os.path.join(job_dir, "clips.json")
     with open(out_path, "w", encoding="utf-8") as f:

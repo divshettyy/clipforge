@@ -205,6 +205,27 @@ def _run_job(job_id, url, n, guidance):
         _set_status(job_id, status="error", error=str(exc))
 
 
+def _run_reclip(job_id, n, prompt):
+    """Re-pick highlights for an already-transcribed job from a free-text prompt
+    ("Clip Anything"), then render. Reuses the existing transcript — no
+    re-download / re-transcribe. Mirrors the pick->render tail of _run_job."""
+    jd = config.job_dir(job_id)
+    try:
+        pick_highlights = import_module("pipeline.highlight").pick_highlights
+        render_all = import_module("pipeline.render").render_all
+    except Exception as exc:
+        _set_status(job_id, status="error", error=f"pipeline module unavailable: {exc}")
+        return
+    try:
+        _set_status(job_id, status="picking", error=None)
+        pick_highlights(jd, n=n, guidance=prompt)
+        _set_status(job_id, status="rendering")
+        render_all(jd)
+        _set_status(job_id, status="ready", error=None)
+    except Exception as exc:
+        _set_status(job_id, status="error", error=str(exc))
+
+
 # --------------------------------------------------------------------------- #
 # Media path-traversal-safe resolution
 # --------------------------------------------------------------------------- #
@@ -260,6 +281,36 @@ async def create_job(request: Request):
     threading.Thread(target=_run_job, args=(job_id, url, n, guidance),
                      daemon=True).start()
     return {"job_id": job_id}
+
+
+@app.post("/api/jobs/{job_id}/reclip")
+async def reclip_job(job_id: str, request: Request):
+    """Clip Anything: re-pick clips for an existing job from a natural-language
+    prompt, reusing its transcript. Runs pick->render on a background thread; the
+    UI re-polls GET /api/jobs/{id} exactly as for a new job."""
+    job = _load_job(job_id)  # 404 if missing
+    status = job.get("status")
+    if status in ("queued", "downloading", "transcribing", "waiting-transcribe",
+                  "picking", "rendering"):
+        raise HTTPException(status_code=409,
+                            detail={"error": f"job is '{status}'; wait until it is ready"})
+    if not os.path.isfile(os.path.join(config.job_dir(job_id), "transcript.json")):
+        raise HTTPException(status_code=400,
+                            detail={"error": "this job has no transcript yet"})
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body or {}
+    prompt = (body.get("prompt") or body.get("guidance") or "").strip()
+    try:
+        n = int(body.get("n") or len(_load_clips(job_id)) or 6)
+    except (TypeError, ValueError):
+        n = len(_load_clips(job_id)) or 6
+    n = min(20, max(1, n))
+    threading.Thread(target=_run_reclip, args=(job_id, n, prompt),
+                     daemon=True).start()
+    return {"job_id": job_id, "status": "picking"}
 
 
 @app.get("/api/jobs")
@@ -348,7 +399,36 @@ async def edit_clip(job_id: str, slug: str, request: Request):
     return spec
 
 
-_RENDER_KEYS = ("mode", "captions", "audio", "lut", "music", "speed", "zoom")
+_RENDER_KEYS = ("mode", "captions", "audio", "lut", "music", "speed", "zoom",
+                "caption_style", "caption_lang", "broll",
+                "aspect", "title_card", "title_secs",
+                "trim_silence", "silence_db", "silence_min",
+                "punch_in", "punch_secs",
+                "caption_emphasis", "caption_emoji")
+
+# One-click "make it viral" render presets — curated compositions of the render
+# flags above into known-good short-form looks. Pure composition: no new render
+# code, each key is an existing render-block field (see CONTRACT.md).
+AUTOPILOT_PRESETS = {
+    "viral": {  # the default social-ready look
+        "mode": "facecrop", "aspect": "9:16", "audio": "enhance",
+        "captions": True, "caption_style": "word-pop",
+        "caption_emphasis": True, "caption_emoji": True,
+        "punch_in": True, "trim_silence": True,
+    },
+    "hormozi": {  # one-big-word, high energy
+        "mode": "facecrop", "aspect": "9:16", "audio": "enhance",
+        "captions": True, "caption_style": "hormozi",
+        "caption_emphasis": True, "caption_emoji": False,
+        "punch_in": True, "trim_silence": True,
+    },
+    "clean": {  # minimal, no gimmicks
+        "mode": "facecrop", "aspect": "9:16", "audio": "enhance",
+        "captions": True, "caption_style": "big",
+        "caption_emphasis": False, "caption_emoji": False,
+        "punch_in": False, "trim_silence": True,
+    },
+}
 
 
 @app.post("/api/jobs/{job_id}/clips/{slug}/render")
@@ -394,6 +474,41 @@ async def render_clip_endpoint(job_id: str, slug: str, request: Request):
     return clip
 
 
+@app.post("/api/jobs/{job_id}/clips/{slug}/variants")
+async def render_variants_endpoint(job_id: str, slug: str, request: Request):
+    _load_job(job_id)
+    render = _import_or_503("pipeline.render")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    aspects = (body or {}).get("aspects") or []
+
+    clips = _load_clips(job_id)
+    index = None
+    clip = None
+    for i, c in enumerate(clips):
+        if c.get("slug") == slug:
+            clip = c
+            index = i + 1  # 1-based
+            break
+    if clip is None:
+        raise HTTPException(status_code=404, detail={"error": f"clip '{slug}' not found"})
+    try:
+        render.render_variants(config.job_dir(job_id), clip, index, aspects)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"error": str(exc)})
+    # Persist the (mutated) clip back into clips.json.
+    clips[index - 1] = clip
+    try:
+        _write_json(_clips_json_path(job_id), clips)
+    except Exception:
+        pass
+    return {"variants": clip.get("variants"), "clip": clip}
+
+
 @app.post("/api/jobs/{job_id}/clips/{slug}/metadata")
 async def generate_metadata_endpoint(job_id: str, slug: str, request: Request):
     _load_job(job_id)
@@ -418,7 +533,11 @@ async def generate_metadata_endpoint(job_id: str, slug: str, request: Request):
 @app.get("/api/assets")
 async def list_assets():
     """Available free render assets: color LUTs and user-dropped music beds."""
-    return {"luts": config.list_luts(), "music": config.list_music()}
+    _r = __import__("pipeline.render", fromlist=["CAPTION_STYLES", "ASPECTS"])
+    return {"luts": config.list_luts(), "music": config.list_music(),
+            "broll": config.list_broll(),
+            "caption_styles": list(getattr(_r, "CAPTION_STYLES", ())),
+            "aspects": list(getattr(_r, "ASPECTS", {}).keys())}
 
 
 def _find_clip(job_id, slug):
@@ -483,16 +602,52 @@ async def assist_endpoint(job_id: str, slug: str, request: Request):
     _clips, clip, _idx = _find_clip(job_id, slug)
     assist = _import_or_503("pipeline.assist")
     fn = {"broll": assist.broll_shots, "music": assist.music_keywords,
-          "thumbtext": assist.thumbnail_text}.get(kind)
+          "thumbtext": assist.thumbnail_text,
+          "improve": assist.improve_tips}.get(kind)
     if fn is None:
         raise HTTPException(status_code=400,
-                            detail={"error": "kind must be one of: broll, music, thumbtext"})
+                            detail={"error": "kind must be one of: broll, music, thumbtext, improve"})
     try:
         return fn(config.job_dir(job_id), clip)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail={"error": str(exc)})
+
+
+@app.get("/api/autopilot")
+async def list_autopilot():
+    """Available one-click viral presets (name -> render block it applies)."""
+    return {"presets": AUTOPILOT_PRESETS}
+
+
+@app.post("/api/jobs/{job_id}/clips/{slug}/autopilot")
+async def autopilot_clip(job_id: str, slug: str, request: Request):
+    """One-click finish: merge a curated viral render preset onto the clip and
+    re-render it. Returns the updated clip spec (same shape as /render)."""
+    _load_job(job_id)
+    render = _import_or_503("pipeline.render")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    preset = ((body or {}).get("preset") or "viral").strip().lower()
+    opts = dict(AUTOPILOT_PRESETS.get(preset) or AUTOPILOT_PRESETS["viral"])
+    clips, clip, index = _find_clip(job_id, slug)
+    clip.setdefault("render", {})
+    clip["render"].update(opts)
+    try:
+        render.render_clip(config.job_dir(job_id), clip, index)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"error": str(exc)})
+    clips[index - 1] = clip
+    try:
+        _write_json(_clips_json_path(job_id), clips)
+    except Exception:
+        pass
+    return clip
 
 
 @app.post("/api/jobs/{job_id}/resolve")

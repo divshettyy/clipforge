@@ -22,7 +22,7 @@ Every module below is built by a separate agent. Obey these paths, schemas, and 
 - `transcript.json`
 - `clips.json`   list of clip specs (schema below)
 - `clips/NN_slug.mp4`  rendered vertical clips (NN = 2-digit 1-based index)
-- `job.json`     `{ "id","url","title","duration","status","error" }`; status in: queued, downloading, transcribing, picking, rendering, ready, error
+- `job.json`     `{ "id","url","title","duration","status","error","render_progress":{"done","total"}? }`; status in: queued, downloading, transcribing, picking, rendering, ready, error
 
 A ready demo job already exists at `<DATA_DIR>/demo-igl-ep8/` with source.mp4, transcript.json, clips.json, and 6 rendered clips — use it to test without re-downloading.
 
@@ -40,13 +40,33 @@ A ready demo job already exists at `<DATA_DIR>/demo-igl-ep8/` with source.mp4, t
   "reason":"why this is viral",     // 1 line from the highlight picker
   "start":110.0, "end":143.5,       // seconds in source
   "render":{
-    "mode":"blurpad",               // blurpad | centercrop | facecrop
-    "captions":false,               // burn word-pop captions
+    "mode":"blurpad",               // blurpad | centercrop | facecrop (speaker-follow)
+    "aspect":"9:16",                // 9:16 | 4:5 | 1:1 | 16:9
+    "captions":false,               // burn captions
+    "caption_style":"word-pop",     // word-pop | karaoke | hormozi | big
+    "caption_lang":"",              // "" = original; else translate target, e.g. "es"
+    "caption_emphasis":false,       // highlight power words (colour + scale)
+    "caption_emoji":false,          // inject keyword emoji (needs NotoEmoji font)
     "speed":1.0,                    // 0.5..2.0 playback speed
-    "zoom":1.0                      // 1.0..1.5 scale of foreground
+    "zoom":1.0,                     // 1.0..1.5 scale of foreground
+    "lut":"",                       // .cube basename in assets/luts/
+    "audio":"raw",                  // raw | enhance (HPF+denoise+comp+loudnorm)
+    "music":"",                     // filename in assets/music/ (ducked bed)
+    "title_card":false,             // true=use hook/title, or a custom string
+    "title_secs":1.8,               // title card duration (0.5..6.0)
+    "trim_silence":false,           // jump-cut dead air (remaps captions+reframe)
+    "silence_db":-32.0,             // silencedetect threshold (dBFS)
+    "silence_min":0.35,             // min silence length to cut (seconds)
+    "punch_in":false,               // hook centre-zoom push; true or 0.02..0.25 intensity
+    "punch_secs":1.8,               // punch-in ramp duration (defaults to title_secs)
+    "broll":[]                      // [{file,start,end}] cutaways (file in assets/broll/)
   },
+  "score":87,                       // 0-100 predicted virality (highlight picker)
+  "hook":"...", "payoff":"...", "retention_risk":"...",  // picker analysis
   "status":"rendered",              // pending | rendered
   "file":"clips/01_mc-stan-range.mp4", // relative to job dir, or null
+  "variants":{"1:1":"clips/01_slug__1x1.mp4"}, // OPTIONAL, multi-aspect batch export
+  "_render_error":"...",            // OPTIONAL, set by render_all if this clip failed
   "youtube":{                        // OPTIONAL, added by pipeline/metadata.py
     "title":"... #Shorts",           // <=100 chars, keyword-front, ends #Shorts
     "description":"...",             // first 125 chars weighted + CTA + hashtags
@@ -55,7 +75,8 @@ A ready demo job already exists at `<DATA_DIR>/demo-igl-ep8/` with source.mp4, t
   }
 }]
 ```
-Output clips are always 1080x1920 (9:16), H.264 + AAC, +faststart.
+Output clips are H.264 + AAC, +faststart, at the selected aspect (default
+1080x1920 9:16; also 1080x1350 4:5, 1080x1080 1:1, 1920x1080 16:9).
 
 ## Module APIs (exact signatures)
 All functions take `job_dir` as an absolute path string unless noted.
@@ -103,6 +124,10 @@ Mount `static/` ; `GET /` returns `static/index.html`.
 - `POST /api/jobs/{id}/clips/{slug}/metadata` body `{"goal"?}` → pipeline.metadata.generate_metadata for that clip, return `{"youtube":{...},"clip":{...}}`.
 - `POST /api/jobs/{id}/resolve` body `{"slugs"?}` → resolve.push_client.push_to_resolve.
 - `POST /api/jobs/{id}/clips/{slug}/youtube` body `{"title"?,"description"?,"tags"?,"privacy"?}` → youtube.upload on that clip file, return {video_id}.
+- `POST /api/jobs/{id}/reclip` body `{"prompt"?,"n"?}` → "Clip Anything": re-run `highlight.pick_highlights(job_dir, n, guidance=prompt)` then `render.render_all` on a background thread, reusing the existing transcript (no re-download/transcribe). Replaces clips.json. 409 if the job is mid-run, 400 if it has no transcript yet. Poll `GET /api/jobs/{id}` (status picking→rendering→ready) exactly as for a new job. `n` defaults to the current clip count.
+- `GET /api/autopilot` → `{"presets":{name:render_block}}`; one-click viral render presets. Names: `viral` (default), `hormozi`, `clean`. Each value is a subset of the render block above (only existing `render.*` keys).
+- `POST /api/jobs/{id}/clips/{slug}/autopilot` body `{"preset"?}` → merge the named preset's render block onto the clip and re-render via `render.render_clip`; persists and returns the clip (same shape as `/render`). Unknown preset falls back to `viral`.
+- `POST /api/jobs/{id}/clips/{slug}/assist` `kind` now also accepts `"improve"` → `pipeline.assist.improve_tips(job_dir, clip)` returns `{"tips":[{"change","why","impact"}]}` (virality copilot: concrete, clip-specific edits to raise the score).
 Run via `/home/hakuza/venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8800` from ROOT.
 
 ### static/index.html
