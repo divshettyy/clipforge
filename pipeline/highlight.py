@@ -112,6 +112,16 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
 
     clips = []
     seen_slugs = set()
+    # The model reads timestamps off a compacted transcript and can
+    # occasionally round or hallucinate past the video's real length (or
+    # give a negative start). An out-of-range start/end reaches render_clip's
+    # `ffmpeg -ss start -t duration` on a source shorter than `start`, which
+    # produces an empty/zero-frame output -- a clip that "succeeds" but is
+    # silently broken, with nothing in the job status to explain why. Clamp
+    # against the transcript's own duration here, before a bad pick is ever
+    # written to clips.json, and drop anything that clamps down to nothing.
+    MIN_CLIP_LEN = 3.0  # seconds; below this a clamped pick isn't worth keeping
+    video_dur = float(duration or 0.0)
     for item in raw:
         try:
             start = float(item["start"])
@@ -119,6 +129,13 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
         except (KeyError, TypeError, ValueError):
             continue
         if end <= start:
+            continue
+        if video_dur > 0:
+            start = max(0.0, min(start, video_dur))
+            end = max(0.0, min(end, video_dur))
+        else:
+            start = max(0.0, start)
+        if end - start < MIN_CLIP_LEN:
             continue
         title = str(item.get("title") or "Untitled clip").strip()
         slug = _slugify(item.get("slug") or title)
