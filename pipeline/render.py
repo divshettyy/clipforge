@@ -346,6 +346,30 @@ def _build_translated_ass(transcript, start, end, out_path, lang,
     return out_path
 
 
+def _remap_span(start, end, remap, min_len=0.08):
+    """Remap a single [start,end) clip-relative span through a silence
+    keep-map's remap(t) function. Returns (new_start, new_end) or None if the
+    span falls entirely inside a cut gap. Shared by captions (_remap_words)
+    and b-roll windows (render_clip), which both need the exact same
+    clamp-to-nearest-kept-edge behavior to stay in sync with the trimmed
+    [vtrim]/[atrim] timeline -- without it, whichever one skips the remap
+    silently desyncs from the others the moment trim_silence is combined
+    with it.
+    """
+    ns, ne = remap(start), remap(end)
+    if ns is None and ne is None:
+        return None  # falls entirely inside a cut gap
+    if ns is None:
+        ns = remap(max(0.0, end - 0.001)) or 0.0
+    if ne is None:
+        ne = remap(max(0.0, end - 0.001))
+        if ne is None:
+            ne = ns + min_len
+    if ne <= ns:
+        ne = ns + min_len
+    return ns, ne
+
+
 def _remap_words(words, keep):
     """Remap rebased word spans through a silence keep-map; drop cut words."""
     if not keep:
@@ -354,18 +378,10 @@ def _remap_words(words, keep):
     remap = silence.make_remap(keep)
     out = []
     for (rs, re_, text) in words:
-        ns, ne = remap(rs), remap(re_)
-        if ns is None and ne is None:
-            continue  # word falls entirely inside a cut gap
-        if ns is None:
-            ns = remap(max(0.0, re_ - 0.001)) or 0.0
-        if ne is None:
-            ne = remap(max(0.0, re_ - 0.001))
-            if ne is None:
-                ne = ns + 0.08
-        if ne <= ns:
-            ne = ns + 0.08
-        out.append((ns, ne, text))
+        span = _remap_span(rs, re_, remap)
+        if span is None:
+            continue
+        out.append((span[0], span[1], text))
     return out
 
 
@@ -588,6 +604,18 @@ def render_clip(job_dir: str, clip: dict, index: int, name_suffix: str = "") -> 
         post += ",setpts=PTS/%s" % _fmt(speed)
 
     # --- b-roll cutaways: overlay local assets over clip-relative windows ---
+    # NOTE: broll windows are given in clip-relative (pre-silence-cut) seconds.
+    # When trim_silence is on, [vbase] below reads the trimmed/concatenated
+    # [vtrim] timeline (see the `vchain = vchain.replace("[0:v]", "[vtrim]", 1)`
+    # above), so an unremapped window would overlay at the wrong point -- the
+    # wrong footage, or not at all if it now falls past the shorter trimmed
+    # duration. Captions and the reframe track already remap through the same
+    # keep-map (_remap_words / make_remap above); b-roll needs the identical
+    # treatment to stay in sync with both.
+    broll_remap = None
+    if keep:
+        from pipeline import silence
+        broll_remap = silence.make_remap(keep)
     broll_files = []  # absolute paths, input order after source
     broll_items = []  # (input_index, start, end)
     for b in broll_spec:
@@ -602,6 +630,11 @@ def render_clip(job_dir: str, clip: dict, index: int, name_suffix: str = "") -> 
             bb = float(b.get("end", a) or a)
             if bb <= a:
                 continue
+            if broll_remap:
+                span = _remap_span(a, bb, broll_remap, min_len=0.1)
+                if span is None:
+                    continue
+                a, bb = span
             broll_items.append((1 + len(broll_files), a, bb))
             broll_files.append(bp)
         except (TypeError, ValueError):
