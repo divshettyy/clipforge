@@ -97,7 +97,7 @@ All functions take `job_dir` as an absolute path string unless noted.
 `render_all(job_dir:str) -> None`  # renders every clip in clips.json, persists clips.json.
   - blurpad: split bg(scale increase+crop 1080x1920+boxblur=40:10) + fg(scale decrease, then *zoom); overlay centered.
   - centercrop: scale to fill then crop center 1080x1920.
-  - facecrop: same as centercrop for v1 (leave a TODO; no face model required).
+  - facecrop: active-speaker face-track reframe (`pipeline/reframe.py`, Ultraface RFB-320 ONNX on the already-present onnxruntime); picks the dominant speaker, smooths the horizontal centre, and animates the `crop` filter via an ffmpeg `sendcmd` script so the crop follows the speaker. Graceful centre-crop fallback if the model/onnxruntime is unavailable.
   - captions=true: build an ASS from transcript words within [start,end], rebased, 4-word lines, active word yellow; burn via `subtitles=...:fontsdir=<fonts_dir()>`; font "Noto Sans Devanagari". speed via setpts/atempo.
 
 ### editor/nl_edit.py

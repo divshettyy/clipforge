@@ -3,6 +3,34 @@
 A running log of feature work and fixes. Newest first. Keep appending to this
 file as the tool evolves.
 
+## 2026-11-12 — docs/config gap sweep (no code behaviour change)
+
+Audit pass to bring docs in line with the shipped code. No pipeline, schema, or
+render changes — documentation and a config template only.
+
+- **README — LLM backend section rewritten.** It claimed highlight picking / NL
+  editing "call the Claude API" and told you to export `ANTHROPIC_API_KEY`. In
+  fact all LLM-using modules (`highlight`, `nl_edit`, `assist`, `metadata`) go
+  through `llm.py`, whose default backend is `cli` (local Claude Code CLI on the
+  user's subscription, **no API key / credits**); `api` is the opt-in SDK path.
+  Documented both backends, `CLIPFORGE_LLM`, and the `ROOT/.env` auto-load.
+- **README — HTTP API list completed.** Added the 10 live endpoints that were
+  missing: `DELETE /jobs/{id}`, `reclip`, `variants`, `metadata`, `srt`,
+  `thumbnail`, `assist`, `GET /autopilot` + `POST .../autopilot`, `GET /assets`.
+- **README — Layout updated** to list the full `pipeline/` module set (reframe,
+  silence, lutgen, subtitles, metadata, assist) and `llm.py`.
+- **CONTRACT.md — stale `facecrop` TODO removed.** It still read "same as
+  centercrop for v1 (leave a TODO; no face model required)"; facecrop has been a
+  real active-speaker face-track reframe (`pipeline/reframe.py`) since
+  2026-11-11. Rewrote the line to match. This was the only TODO in the tree.
+- **Added `.env.example`** documenting every config env var (`CLIPFORGE_LLM`,
+  `ANTHROPIC_API_KEY`, `CLIPFORGE_MODEL`, `CLIPFORGE_WIN_HOST`,
+  `CLIPFORGE_RESOLVE_PORT`, `CLIPFORGE_WIN_SHARE`). Not gitignored (`*.env` does
+  not match `.env.example`); `.env` itself stays ignored.
+
+Verified: `server import OK`, README API list matches `@app.*` routes in
+`server.py`, `/api/assets` description matches its handler's return shape.
+
 ## 2026-11-11 — competitor-parity pass (Opus "ClipAnything", Submagic one-click finish)
 
 Market gap analysis vs opus.pro / submagic / klap.app / vizard / ssemble / lakai.
