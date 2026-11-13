@@ -3,6 +3,34 @@
 A running log of feature work and fixes. Newest first. Keep appending to this
 file as the tool evolves.
 
+## 2026-11-13 — portfolio/public-readiness pass (no code behaviour change)
+
+Audit before making the GitHub repo public.
+
+- **Secrets scan (working tree + full git history)** — searched for API keys,
+  tokens, passwords, OAuth client secrets, `.env` files, and credential JSON
+  across every commit (`git log -p`) and the working tree. Found **no real
+  secret values** anywhere, in history or on disk: the only hits were
+  placeholder docs (`sk-ant-...`, `export ANTHROPIC_API_KEY=`), code that
+  *reads* the env var, and the always-gitignored `youtube/client_secret*.json`
+  / `*token*.json` filenames mentioned in setup docs (never actually
+  committed). The real local `.env` (holds a live `ANTHROPIC_API_KEY`) is
+  untracked and already covered by `.gitignore`.
+- **Added `LICENSE`** — MIT, 2026, divshettyy. Was missing.
+- **README rewritten** for a public portfolio audience: tagline, feature list,
+  tech stack table, prerequisites, generic install steps (`python3 -m venv`
+  instead of assuming a pre-built local venv path), a config/env var
+  reference table (names and defaults only, no values), a usage walkthrough,
+  roadmap, known-limitations section, and an explicit license line. HTTP API
+  list and layout section carried over from the prior pass (still accurate
+  against `server.py`).
+- No tracked file or any historical commit contains a real API key, OAuth
+  secret, password, or private key. `.gitignore` already covers `.env`,
+  `*.env`, YouTube OAuth artifacts, `data/` (per-job media), and standard
+  Python/OS noise — confirmed sufficient, no changes needed.
+
+Verified: no code changes, no schema changes — docs/license only.
+
 ## 2026-11-12 — docs/config gap sweep (no code behaviour change)
 
 Audit pass to bring docs in line with the shipped code. No pipeline, schema, or
