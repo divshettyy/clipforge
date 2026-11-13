@@ -78,9 +78,17 @@ def have_credentials() -> bool:
 
 
 def _save_token(creds) -> None:
+    # token.json holds a refresh token that grants YouTube upload access for
+    # this account — write it readable/writable by the owner only (defense in
+    # depth against a permissive umask or another local user on a shared box).
     try:
-        with open(TOKEN_FILE, "w") as fh:
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as fh:
             fh.write(creds.to_json())
+        try:
+            os.chmod(TOKEN_FILE, 0o600)  # enforce regardless of umask
+        except Exception:
+            pass
     except Exception:
         pass
 

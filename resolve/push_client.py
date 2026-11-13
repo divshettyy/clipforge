@@ -33,11 +33,19 @@ def _bridge_url(path: str) -> str:
     )
 
 
+def _auth_headers() -> dict:
+    """X-ClipForge-Token header if CLIPFORGE_BRIDGE_TOKEN is configured, else {}."""
+    token = getattr(config, "RESOLVE_BRIDGE_TOKEN", "")
+    return {"X-ClipForge-Token": token} if token else {}
+
+
 def resolve_health() -> bool:
     """GET /health on the bridge. Return True only if the bridge answers and
     reports Resolve connected. Never raises; returns False fast on any problem."""
     try:
-        req = urllib.request.Request(_bridge_url("/health"), method="GET")
+        req = urllib.request.Request(
+            _bridge_url("/health"), method="GET", headers=_auth_headers()
+        )
         with urllib.request.urlopen(req, timeout=_HEALTH_TIMEOUT) as resp:
             body = resp.read().decode("utf-8", "replace")
         data = json.loads(body)
@@ -119,11 +127,13 @@ def push_to_resolve(job_dir: str, slugs=None) -> dict:
     # --- POST to the bridge ------------------------------------------------
     payload = {"timeline": TIMELINE_NAME, "paths": win_paths}
     data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    headers.update(_auth_headers())
     req = urllib.request.Request(
         _bridge_url("/import"),
         data=data,
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=_IMPORT_TIMEOUT) as resp:

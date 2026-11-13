@@ -30,6 +30,11 @@ WIN_HOST_IP = os.environ.get("CLIPFORGE_WIN_HOST", "172.20.16.1")
 RESOLVE_BRIDGE_PORT = int(os.environ.get("CLIPFORGE_RESOLVE_PORT", "8765"))
 # Windows-visible drop folder (WSL path to C:\Users\Public\ClipForge)
 WIN_SHARE_DIR = os.environ.get("CLIPFORGE_WIN_SHARE", "/mnt/c/Users/Public/ClipForge")
+# Optional shared secret for the Resolve bridge (resolve/bridge_server.py), which
+# binds 0.0.0.0 so WSL can reach the Windows host. Set the same value in the
+# bridge's environment to require it on every request. Empty = no auth (legacy
+# behaviour), matching the bridge's own default.
+RESOLVE_BRIDGE_TOKEN = os.environ.get("CLIPFORGE_BRIDGE_TOKEN", "")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = os.environ.get("CLIPFORGE_MODEL", "claude-opus-4-8")
