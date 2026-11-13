@@ -85,6 +85,33 @@ The first run may raise a Windows Defender Firewall prompt — **allow** Python 
 private networks so WSL can connect. If no prompt appeared and WSL can't reach the
 bridge, add an inbound rule allowing TCP **8765**.
 
+### 1f. (Recommended) require a shared-secret token
+
+The bridge binds **`0.0.0.0:8765`** — not `127.0.0.1` — because WSL2 reaches the
+Windows host over its virtual-adapter IP, not Windows' own loopback. That means
+anything else on the same network/VLAN that can reach the Windows host can also
+hit `/import` and ask Resolve to import arbitrary local file paths, with zero
+authentication by default.
+
+To close that off, set `CLIPFORGE_BRIDGE_TOKEN` to the same random value on
+**both** sides:
+
+- **Windows** (before running `bridge_server.py`):
+  ```powershell
+  $env:CLIPFORGE_BRIDGE_TOKEN = "paste-a-long-random-string-here"
+  python bridge_server.py
+  ```
+- **WSL** (`clipforge/.env`):
+  ```
+  CLIPFORGE_BRIDGE_TOKEN=paste-the-same-long-random-string-here
+  ```
+
+With it set, every request must carry a matching `X-ClipForge-Token` header or
+the bridge returns `401`. `push_client.py` already sends it automatically when
+`CLIPFORGE_BRIDGE_TOKEN` is in the WSL-side environment. Leaving it unset keeps
+the original unauthenticated behaviour (fine on a trusted, isolated home LAN;
+not recommended otherwise).
+
 ---
 
 ## 2. WSL side (`push_client.py`)

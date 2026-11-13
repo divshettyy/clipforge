@@ -16,6 +16,7 @@ Listens on 0.0.0.0:8765 so WSL (172.20.16.x) can reach the Windows host.
 
 See README.md for the required Windows environment variables and launch steps.
 """
+import hmac
 import os
 import sys
 import json
@@ -27,6 +28,15 @@ PORT = int(os.environ.get("CLIPFORGE_RESOLVE_PORT", "8765"))
 PROJECT_NAME = "ClipForge"
 DEFAULT_TIMELINE = "ClipForge"
 RES_W, RES_H = "1080", "1920"
+
+# Optional shared-secret auth. The bridge binds 0.0.0.0 (WSL cannot reach a
+# Windows-side localhost-only listener), so anything on the same network/VLAN
+# can otherwise reach it. Set CLIPFORGE_BRIDGE_TOKEN (same value on both the
+# Windows bridge and the WSL client, e.g. via .env) to require a matching
+# `X-ClipForge-Token` header on every request. Left unset, the bridge still
+# runs exactly as before (unauthenticated) for backward compatibility — see
+# resolve/README.md for how to turn this on.
+BRIDGE_TOKEN = os.environ.get("CLIPFORGE_BRIDGE_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +281,18 @@ class BridgeHandler(BaseHTTPRequestHandler):
         # Compact logging to stderr.
         sys.stderr.write("[bridge] %s - %s\n" % (self.address_string(), fmt % args))
 
+    def _authorized(self):
+        """True if no token is configured, or the request's X-ClipForge-Token
+        header matches it (constant-time compare)."""
+        if not BRIDGE_TOKEN:
+            return True
+        supplied = self.headers.get("X-ClipForge-Token", "")
+        return hmac.compare_digest(supplied, BRIDGE_TOKEN)
+
     def do_GET(self):
+        if not self._authorized():
+            self._send_json(401, {"ok": False, "error": "unauthorized"})
+            return
         if self.path.split("?", 1)[0] == "/health":
             try:
                 resolve = get_resolve()
@@ -288,6 +309,9 @@ class BridgeHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"ok": False, "error": "not found: %s" % self.path})
 
     def do_POST(self):
+        if not self._authorized():
+            self._send_json(401, {"ok": False, "error": "unauthorized"})
+            return
         if self.path.split("?", 1)[0] != "/import":
             self._send_json(404, {"ok": False, "error": "not found: %s" % self.path})
             return
@@ -331,6 +355,13 @@ def main():
     httpd = ThreadingHTTPServer((HOST, PORT), BridgeHandler)
     sys.stderr.write("ClipForge Resolve bridge listening on %s:%d\n" % (HOST, PORT))
     sys.stderr.write("  GET  /health\n  POST /import\n")
+    if BRIDGE_TOKEN:
+        sys.stderr.write("  auth: X-ClipForge-Token required\n")
+    else:
+        sys.stderr.write(
+            "  auth: NONE — set CLIPFORGE_BRIDGE_TOKEN to require a shared-secret "
+            "header (see resolve/README.md)\n"
+        )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
