@@ -54,6 +54,45 @@ def _extract_json_array(text: str):
     raise RuntimeError("unterminated JSON array in model response")
 
 
+MAX_CLIP_LEN = 60.0   # seconds; matches the prompt's contract to the model
+SNAP_WINDOW = 2.5     # max seconds a boundary may move to land on a segment edge
+
+
+def _snap_boundaries(start, end, segments, window=SNAP_WINDOW):
+    """Snap start/end to the nearest transcript segment edge within `window`.
+
+    Models read a compacted mm:ss transcript, so picks tend to land mid-
+    sentence. Starting on a segment start and ending on a segment end avoids
+    clipped words at the cut. Boundaries with no edge nearby are left as-is.
+    """
+    starts = [float(s.get("start", 0.0)) for s in segments]
+    ends = [float(s.get("end", s.get("start", 0.0))) for s in segments]
+
+    def nearest(t, edges):
+        best = min(edges, key=lambda e: abs(e - t), default=None)
+        return best if best is not None and abs(best - t) <= window else t
+
+    ns, ne = nearest(start, starts), nearest(end, ends)
+    return (ns, ne) if ne > ns else (start, end)
+
+
+def _drop_overlaps(clips, max_overlap=0.3):
+    """Given clips sorted best-first, drop any that overlap an already-kept
+    clip by more than `max_overlap` of the shorter clip's length."""
+    kept = []
+    for c in clips:
+        dup = False
+        for k in kept:
+            ov = min(c["end"], k["end"]) - max(c["start"], k["start"])
+            shorter = min(c["end"] - c["start"], k["end"] - k["start"])
+            if ov > 0 and shorter > 0 and ov / shorter > max_overlap:
+                dup = True
+                break
+        if not dup:
+            kept.append(c)
+    return kept
+
+
 def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
     """Read transcript.json, ask Claude for `n` viral moments, write clips.json."""
     tpath = os.path.join(job_dir, "transcript.json")
@@ -135,6 +174,9 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             end = max(0.0, min(end, video_dur))
         else:
             start = max(0.0, start)
+        start, end = _snap_boundaries(start, end, transcript.get("segments", []))
+        if end - start > MAX_CLIP_LEN:
+            end = start + MAX_CLIP_LEN
         if end - start < MIN_CLIP_LEN:
             continue
         title = str(item.get("title") or "Untitled clip").strip()
@@ -178,6 +220,7 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
 
     # Rank best-first by predicted virality.
     clips.sort(key=lambda c: c.get("score", 0), reverse=True)
+    clips = _drop_overlaps(clips)
 
     out_path = os.path.join(job_dir, "clips.json")
     with open(out_path, "w", encoding="utf-8") as f:
