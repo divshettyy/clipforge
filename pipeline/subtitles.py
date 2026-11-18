@@ -34,6 +34,33 @@ def _load_transcript(job_dir):
         return json.load(f)
 
 
+_SENT_END = (".", "!", "?", "…", "。", "！", "？", "।")
+
+
+def group_words(words, max_words=7, max_dur=3.5, max_gap=0.7):
+    """Split [(start, end, text), ...] into readable caption cues.
+
+    Breaks on sentence-ending punctuation, on pauses longer than ``max_gap``
+    seconds, when a cue would exceed ``max_dur`` seconds, or at ``max_words``.
+    Avoids captions that straddle two sentences or hang on screen over silence.
+    """
+    groups, cur = [], []
+    for w in words:
+        if cur:
+            gap = w[0] - cur[-1][1]
+            too_long = (w[1] - cur[0][0]) > max_dur
+            if len(cur) >= max_words or gap > max_gap or too_long:
+                groups.append(cur)
+                cur = []
+        cur.append(w)
+        if w[2].rstrip().endswith(_SENT_END):
+            groups.append(cur)
+            cur = []
+    if cur:
+        groups.append(cur)
+    return groups
+
+
 def write_srt(job_dir: str, clip: dict, words_per_line: int = 7) -> str:
     """Write a .srt for the clip window, grouping words into short lines."""
     start = float(clip["start"]); end = float(clip["end"])
@@ -47,14 +74,17 @@ def write_srt(job_dir: str, clip: dict, words_per_line: int = 7) -> str:
 
     lines = []
     idx = 1
-    for i in range(0, len(words), words_per_line):
-        group = words[i:i + words_per_line]
-        if not group:
-            continue
+    groups = group_words(words, words_per_line)
+    for gi, group in enumerate(groups):
         ls = group[0][0]
         le = max(g[1] for g in group)
         if le <= ls:
             le = ls + 0.4
+        # never overlap the next cue (players flicker/stack overlapping cues)
+        if gi + 1 < len(groups):
+            nxt = groups[gi + 1][0][0]
+            if le > nxt:
+                le = max(ls + 0.05, nxt)
         text = " ".join(g[2] for g in group).strip()
         lines.append("%d\n%s --> %s\n%s\n" % (idx, _srt_time(ls), _srt_time(le), text))
         idx += 1

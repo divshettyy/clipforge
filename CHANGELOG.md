@@ -3,6 +3,10 @@
 A running log of feature work and fixes. Newest first. Keep appending to this
 file as the tool evolves.
 
+## Unreleased
+
+- **SRT export**: captions now break at sentence ends, long pauses (>0.7 s) and a 3.5 s max cue length instead of fixed 7-word chunks; cues never overlap. Added `tests/test_subtitles.py` (10 tests).
+
 ## 2026-11-13 — portfolio/public-readiness pass (no code behaviour change)
 
 Audit before making the GitHub repo public.
