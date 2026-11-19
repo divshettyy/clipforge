@@ -76,6 +76,39 @@ def _snap_boundaries(start, end, segments, window=SNAP_WINDOW):
     return (ns, ne) if ne > ns else (start, end)
 
 
+def _speech_stats(start, end, segments):
+    """Measure the transcript inside [start, end]: words/second (segments are
+    prorated by overlap) and the fraction of the window with no speech at all
+    ("dead air"). These are objective signals a model reading mm:ss text can't see."""
+    dur = max(1e-6, end - start)
+    words = covered = 0.0
+    for seg in segments:
+        s0 = float(seg.get("start", 0.0))
+        e0 = float(seg.get("end", s0))
+        ov = min(end, e0) - max(start, s0)
+        if ov <= 0 or e0 <= s0:
+            continue
+        covered += ov
+        words += len((seg.get("text") or "").split()) * (ov / (e0 - s0))
+    return {"wps": round(words / dur, 2), "dead_air": round(max(0.0, 1 - covered / dur), 2)}
+
+
+def _adjust_score(llm_score, stats):
+    """Blend the model's score with measured delivery: heavy dead air or a very
+    slow pace costs points (viewers swipe), a brisk conversational pace earns a
+    few. Bounded to +-10 so the model's content judgement still dominates."""
+    adj = 0
+    if stats["dead_air"] > 0.35:
+        adj -= 10
+    elif stats["dead_air"] > 0.2:
+        adj -= 5
+    if stats["wps"] < 1.2:
+        adj -= 5
+    elif 2.2 <= stats["wps"] <= 3.8:
+        adj += 3
+    return min(100, max(0, llm_score + adj))
+
+
 def _drop_overlaps(clips, max_overlap=0.3):
     """Given clips sorted best-first, drop any that overlap an already-kept
     clip by more than `max_overlap` of the shorter clip's length."""
@@ -195,6 +228,7 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             score = 50
         score = min(100, max(0, score))
 
+        stats = _speech_stats(start, end, transcript.get("segments", []))
         clips.append({
             "slug": slug,
             "title": title,
@@ -202,7 +236,10 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             "hook": str(item.get("hook") or "").strip(),
             "payoff": str(item.get("payoff") or "").strip(),
             "retention_risk": str(item.get("retention_risk") or "").strip(),
-            "score": score,
+            "score": _adjust_score(score, stats),
+            "llm_score": score,
+            "speech_rate": stats["wps"],
+            "dead_air": stats["dead_air"],
             "start": round(start, 2),
             "end": round(end, 2),
             "render": {
