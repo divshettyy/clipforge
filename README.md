@@ -1,5 +1,9 @@
 # ClipForge
 
+[![CI](https://github.com/divshettyy/clipforge/actions/workflows/ci.yml/badge.svg)](https://github.com/divshettyy/clipforge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](requirements.txt)
+
 **YouTube URL in, viral vertical clips out.** A local, self-hosted pipeline
 that downloads a YouTube video, transcribes it, picks the best moments, and
 renders burned-caption 9:16 clips — then lets you refine each one with plain
