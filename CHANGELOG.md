@@ -8,6 +8,17 @@ file as the tool evolves.
 - **Smarter clip scoring**: highlight picks now blend the model's virality score with measured delivery (words/sec and dead-air fraction from the transcript) — up to ±10 points, so slow/silent picks rank lower and brisk ones higher. Clips keep `llm_score`, `speech_rate`, `dead_air` for transparency. 7 new tests.
 - **SRT export**: captions now break at sentence ends, long pauses (>0.7 s) and a 3.5 s max cue length instead of fixed 7-word chunks; cues never overlap. Added `tests/test_subtitles.py` (10 tests).
 
+## 2026-11-20 — CI Python bump to 3.12
+
+The CI smoke job pinned Python 3.11, which cannot install numpy 2.5.x (that release
+requires Python 3.12 or newer). As a result the grouped Dependabot pull request that
+bumped numpy failed to install its dependencies and the check went red, even though
+the default branch stayed green on the older numpy it resolves to on 3.11. Bumped the
+CI runner to Python 3.12 so the modern numpy installs and the dependency-update PRs
+pass again; 3.12 also keeps full binary-wheel coverage for faster-whisper and the rest
+of the stack, which a jump straight to the local runtime (3.14) would have risked.
+Validated by the CI run triggered on push.
+
 ## 2026-11-20 — discoverability and dependency-hygiene pass (no code behaviour change)
 
 Part of a repository-wide polish effort. On top of the earlier README badges, topic
