@@ -8,6 +8,18 @@ file as the tool evolves.
 - **Smarter clip scoring**: highlight picks now blend the model's virality score with measured delivery (words/sec and dead-air fraction from the transcript) — up to ±10 points, so slow/silent picks rank lower and brisk ones higher. Clips keep `llm_score`, `speech_rate`, `dead_air` for transparency. 7 new tests.
 - **SRT export**: captions now break at sentence ends, long pauses (>0.7 s) and a 3.5 s max cue length instead of fixed 7-word chunks; cues never overlap. Added `tests/test_subtitles.py` (10 tests).
 
+## 2026-11-20 — discoverability and dependency-hygiene pass (no code behaviour change)
+
+Part of a repository-wide polish effort. On top of the earlier README badges, topic
+tags and issue/PR templates, this pass adds a Dependabot configuration that opens
+grouped weekly pull requests for both Python packages and GitHub Actions, an
+`.editorconfig` so every contributor gets the same indentation and line-ending rules,
+and upper version bounds on the previously unpinned dependencies (`numpy`,
+`faster-whisper`, the Google API clients and `python-multipart`) to guard against a
+surprise breaking major release. `yt-dlp` is intentionally left unpinned because it
+needs to track the newest release to keep working against YouTube. Nothing in the
+application pipeline changed.
+
 ## 2026-11-13 — portfolio/public-readiness pass (no code behaviour change)
 
 Audit before making the GitHub repo public.

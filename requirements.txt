@@ -1,9 +1,9 @@
 fastapi==0.162.0
 uvicorn[standard]==0.54.0
-anthropic
+anthropic>=0.40
 yt-dlp
-faster-whisper
-numpy
-google-api-python-client
-google-auth-oauthlib
-python-multipart
+faster-whisper>=1.0
+numpy>=1.26,<3
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+python-multipart>=0.0.9
