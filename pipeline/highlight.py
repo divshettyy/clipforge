@@ -82,6 +82,7 @@ def _speech_stats(start, end, segments):
     ("dead air"). These are objective signals a model reading mm:ss text can't see."""
     dur = max(1e-6, end - start)
     words = covered = 0.0
+    first_speech = None
     for seg in segments:
         s0 = float(seg.get("start", 0.0))
         e0 = float(seg.get("end", s0))
@@ -89,8 +90,13 @@ def _speech_stats(start, end, segments):
         if ov <= 0 or e0 <= s0:
             continue
         covered += ov
+        first_speech = max(start, s0) if first_speech is None else min(first_speech, max(start, s0))
         words += len((seg.get("text") or "").split()) * (ov / (e0 - s0))
-    return {"wps": round(words / dur, 2), "dead_air": round(max(0.0, 1 - covered / dur), 2)}
+    # lead_in: silence before the first spoken word. A clip that opens on 2s of
+    # nothing loses its hook window on Shorts/Reels.
+    lead_in = (first_speech - start) if first_speech is not None else dur
+    return {"wps": round(words / dur, 2), "dead_air": round(max(0.0, 1 - covered / dur), 2),
+            "lead_in": round(max(0.0, lead_in), 2)}
 
 
 def _adjust_score(llm_score, stats):
@@ -102,6 +108,8 @@ def _adjust_score(llm_score, stats):
         adj -= 10
     elif stats["dead_air"] > 0.2:
         adj -= 5
+    if stats.get("lead_in", 0) > 1.5:
+        adj -= 4
     if stats["wps"] < 1.2:
         adj -= 5
     elif 2.2 <= stats["wps"] <= 3.8:
@@ -240,6 +248,7 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             "llm_score": score,
             "speech_rate": stats["wps"],
             "dead_air": stats["dead_air"],
+            "lead_in": stats["lead_in"],
             "start": round(start, 2),
             "end": round(end, 2),
             "render": {

@@ -5,6 +5,8 @@ file as the tool evolves.
 
 ## Unreleased
 
+- **Lead-in scoring**: clips now report `lead_in` (seconds of silence before the first word); openings with >1.5 s of dead air lose 4 points since they waste the hook window. 5 new tests.
+
 - **Smarter clip scoring**: highlight picks now blend the model's virality score with measured delivery (words/sec and dead-air fraction from the transcript) — up to ±10 points, so slow/silent picks rank lower and brisk ones higher. Clips keep `llm_score`, `speech_rate`, `dead_air` for transparency. 7 new tests.
 - **SRT export**: captions now break at sentence ends, long pauses (>0.7 s) and a 3.5 s max cue length instead of fixed 7-word chunks; cues never overlap. Added `tests/test_subtitles.py` (10 tests).
 
