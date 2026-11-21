@@ -5,6 +5,10 @@ file as the tool evolves.
 
 ## Unreleased
 
+- Highlight picking now chunks long videos (>30 min) into overlapping 25-minute transcript windows, queries the model per window, then merges, de-duplicates and keeps the top `n`. Previously a multi-hour transcript went into a single prompt and could overflow the context window. A failing chunk is skipped rather than failing the job. Short videos behave exactly as before. Tests added.
+
+## Unreleased
+
 - **Lead-in scoring**: clips now report `lead_in` (seconds of silence before the first word); openings with >1.5 s of dead air lose 4 points since they waste the hook window. 5 new tests.
 
 - **Smarter clip scoring**: highlight picks now blend the model's virality score with measured delivery (words/sec and dead-air fraction from the transcript) — up to ±10 points, so slow/silent picks rank lower and brisk ones higher. Clips keep `llm_score`, `speech_rate`, `dead_air` for transparency. 7 new tests.

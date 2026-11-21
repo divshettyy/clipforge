@@ -134,18 +134,49 @@ def _drop_overlaps(clips, max_overlap=0.3):
     return kept
 
 
-def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
-    """Read transcript.json, ask Claude for `n` viral moments, write clips.json."""
-    tpath = os.path.join(job_dir, "transcript.json")
-    if not os.path.exists(tpath):
-        raise RuntimeError("transcript.json not found in %s" % job_dir)
-    with open(tpath, "r", encoding="utf-8") as f:
-        transcript = json.load(f)
+CHUNK_SECONDS = 1500.0   # ~25 min of transcript per model call
+CHUNK_OVERLAP = 60.0     # overlap so a moment straddling a boundary is seen whole
+CHUNK_THRESHOLD = 1800.0 # only chunk videos longer than this
 
+
+def _chunk_transcript(transcript, chunk_s=CHUNK_SECONDS, overlap=CHUNK_OVERLAP):
+    """Split a long transcript into overlapping time windows.
+
+    Returns a list of (window_start, window_end, sub_transcript). Each
+    sub_transcript keeps absolute timestamps, so picks need no re-basing. A
+    transcript shorter than one window yields a single chunk (no-op).
+    """
+    segs = transcript.get("segments", [])
+    dur = float(transcript.get("duration") or 0.0)
+    if not dur and segs:
+        dur = max(float(s.get("end", s.get("start", 0.0))) for s in segs)
+    if dur <= chunk_s:
+        return [(0.0, dur, transcript)]
+    step = max(1.0, chunk_s - overlap)
+    out = []
+    t = 0.0
+    while t < dur:
+        w_end = min(dur, t + chunk_s)
+        sub = [s for s in segs if float(s.get("start", 0.0)) < w_end
+               and float(s.get("end", s.get("start", 0.0))) > t]
+        if sub:
+            out.append((t, w_end, dict(transcript, segments=sub, duration=dur)))
+        if w_end >= dur:
+            break
+        t += step
+    return out or [(0.0, dur, transcript)]
+
+
+def _per_chunk_quota(n, n_chunks):
+    """Picks to request per chunk: ceil(n / chunks) + 1 (min 2). Overlap and
+    dedup trim the merged list back to the best `n` afterwards."""
+    return max(2, -(-int(n) // max(1, n_chunks)) + 1)
+
+
+def _ask_model(llm, transcript, n, guidance):
+    """One model call over `transcript`; returns the raw parsed pick list."""
     compact = _compact_transcript(transcript)
     duration = transcript.get("duration", 0.0)
-
-    import llm
 
     guidance_line = ""
     if guidance and guidance.strip():
@@ -188,7 +219,33 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
 
     reply = llm.complete(prompt, system=system, max_tokens=4096)
 
-    raw = _extract_json_array(reply)
+    return _extract_json_array(reply)
+
+
+def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
+    """Read transcript.json, ask Claude for `n` viral moments, write clips.json."""
+    tpath = os.path.join(job_dir, "transcript.json")
+    if not os.path.exists(tpath):
+        raise RuntimeError("transcript.json not found in %s" % job_dir)
+    with open(tpath, "r", encoding="utf-8") as f:
+        transcript = json.load(f)
+
+    import llm
+
+    video_dur = float(transcript.get("duration") or 0.0)
+    chunks = _chunk_transcript(transcript) if video_dur > CHUNK_THRESHOLD else \
+        [(0.0, video_dur, transcript)]
+    quota = int(n) if len(chunks) == 1 else _per_chunk_quota(n, len(chunks))
+    raw = []
+    for (_ws, _we, sub) in chunks:
+        try:
+            raw.extend(_ask_model(llm, sub, quota, guidance))
+        except Exception:
+            if len(chunks) == 1:
+                raise
+            continue  # one bad chunk must not sink a multi-hour job
+    if not raw:
+        raise RuntimeError("model returned no usable clips")
 
     clips = []
     seen_slugs = set()
@@ -201,7 +258,6 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
     # against the transcript's own duration here, before a bad pick is ever
     # written to clips.json, and drop anything that clamps down to nothing.
     MIN_CLIP_LEN = 3.0  # seconds; below this a clamped pick isn't worth keeping
-    video_dur = float(duration or 0.0)
     for item in raw:
         try:
             start = float(item["start"])
@@ -266,7 +322,7 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
 
     # Rank best-first by predicted virality.
     clips.sort(key=lambda c: c.get("score", 0), reverse=True)
-    clips = _drop_overlaps(clips)
+    clips = _drop_overlaps(clips)[:max(1, int(n))]
 
     out_path = os.path.join(job_dir, "clips.json")
     with open(out_path, "w", encoding="utf-8") as f:
