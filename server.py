@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
+import validation
 
 app = FastAPI(title="ClipForge")
 
@@ -252,14 +253,16 @@ async def create_job(request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    url = (body or {}).get("url")
-    if not url:
+    if not isinstance(body, dict):
+        body = {}
+    if not body.get("url"):
         raise HTTPException(status_code=400, detail={"error": "missing 'url'"})
     try:
-        n = int((body or {}).get("n") or 6)
-    except (TypeError, ValueError):
-        n = 6
-    guidance = (body or {}).get("guidance") or ""
+        url = validation.clean_url(body.get("url"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    n = validation.clamp_clips(body.get("n"))
+    guidance = validation.clean_guidance(body.get("guidance"))
     force = bool((body or {}).get("force"))
 
     # Dedup: same video already has a (non-error) job -> return it instead of
