@@ -55,7 +55,11 @@ def _write_json(path, data):
 
 
 def _job_json_path(job_id):
-    return os.path.join(config.job_dir(job_id), "job.json")
+    try:
+        return os.path.join(config.job_dir(job_id), "job.json")
+    except ValueError:
+        # Malformed id (traversal chars etc.) is "not found", never a 500.
+        raise HTTPException(status_code=404, detail={"error": "job not found"})
 
 
 def _clips_json_path(job_id):
@@ -231,7 +235,10 @@ def _run_reclip(job_id, n, prompt):
 # Media path-traversal-safe resolution
 # --------------------------------------------------------------------------- #
 def _safe_media_path(job_id, rel_path):
-    job_root = os.path.realpath(config.job_dir(job_id))
+    try:
+        job_root = os.path.realpath(config.job_dir(job_id))
+    except ValueError:
+        raise HTTPException(status_code=404, detail={"error": "job not found"})
     if not os.path.isdir(job_root):
         raise HTTPException(status_code=404, detail={"error": f"job '{job_id}' not found"})
     # Strip any leading slashes so os.path.join cannot escape to an absolute path.
@@ -305,7 +312,7 @@ async def reclip_job(job_id: str, request: Request):
     except Exception:
         body = {}
     body = body or {}
-    prompt = (body.get("prompt") or body.get("guidance") or "").strip()
+    prompt = validation.clean_guidance(body.get("prompt") or body.get("guidance"))
     try:
         n = int(body.get("n") or len(_load_clips(job_id)) or 6)
     except (TypeError, ValueError):
@@ -389,7 +396,7 @@ async def edit_clip(job_id: str, slug: str, request: Request):
         body = await request.json()
     except Exception:
         body = {}
-    instruction = (body or {}).get("instruction")
+    instruction = validation.clean_guidance((body or {}).get("instruction"))
     if not instruction:
         raise HTTPException(status_code=400, detail={"error": "missing 'instruction'"})
     nl_edit = _import_or_503("editor.nl_edit")
