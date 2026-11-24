@@ -5,6 +5,8 @@ file as the tool evolves.
 
 ## Unreleased
 
+- **Truncation-proof highlight parsing**: if the model's reply is cut off mid-array (token limit), complete picks are now salvaged instead of failing the job. Over-long picks are trimmed to the last transcript segment end within 60 s rather than a hard mid-word cut. 3 new tests.
+
 - **API hardening**: `POST /api/jobs` now validates input via new `validation.py` — only http(s) URLs accepted (blocks `file://` and local paths reaching yt-dlp), clip count clamped to 1–20 (was unbounded, could blow up the LLM prompt), guidance capped at 2000 chars. Non-JSON-object bodies no longer crash. 3 new test classes.
 
 - Highlight picking now chunks long videos (>30 min) into overlapping 25-minute transcript windows, queries the model per window, then merges, de-duplicates and keeps the top `n`. Previously a multi-hour transcript went into a single prompt and could overflow the context window. A failing chunk is skipped rather than failing the job. Short videos behave exactly as before. Tests added.

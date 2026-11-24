@@ -51,7 +51,42 @@ def _extract_json_array(text: str):
             depth -= 1
             if depth == 0:
                 return json.loads(text[start:i + 1])
+    # Truncated reply (e.g. max_tokens hit mid-array): salvage every complete
+    # top-level object rather than failing the whole job.
+    salvaged = _salvage_objects(text[start + 1:])
+    if salvaged:
+        return salvaged
     raise RuntimeError("unterminated JSON array in model response")
+
+
+def _salvage_objects(body: str) -> list:
+    """Return the complete top-level {...} objects found in `body`, ignoring a
+    trailing partial one. String/escape aware."""
+    out, depth, obj_start, in_str, esc = [], 0, None, False, False
+    for i, c in enumerate(body):
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            if depth == 0:
+                obj_start = i
+            depth += 1
+        elif c == "}" and depth:
+            depth -= 1
+            if depth == 0 and obj_start is not None:
+                try:
+                    out.append(json.loads(body[obj_start:i + 1]))
+                except ValueError:
+                    pass
+                obj_start = None
+    return out
 
 
 MAX_CLIP_LEN = 60.0   # seconds; matches the prompt's contract to the model
@@ -273,7 +308,11 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             start = max(0.0, start)
         start, end = _snap_boundaries(start, end, transcript.get("segments", []))
         if end - start > MAX_CLIP_LEN:
-            end = start + MAX_CLIP_LEN
+            # Prefer cutting at the last segment end inside the limit so the
+            # clip doesn't stop mid-word; fall back to a hard cut.
+            cands = [float(sg.get("end", 0.0)) for sg in transcript.get("segments", [])
+                     if start + MIN_CLIP_LEN < float(sg.get("end", 0.0)) <= start + MAX_CLIP_LEN]
+            end = max(cands) if cands else start + MAX_CLIP_LEN
         if end - start < MIN_CLIP_LEN:
             continue
         title = str(item.get("title") or "Untitled clip").strip()
