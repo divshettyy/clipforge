@@ -134,6 +134,26 @@ def _speech_stats(start, end, segments):
             "lead_in": round(max(0.0, lead_in), 2)}
 
 
+def _ends_clean(end, segments, tol=0.75):
+    """True if the clip finishes on a completed sentence: the last transcript
+    segment overlapping it ends within `tol` seconds of the cut and its text
+    closes with terminal punctuation. Clips that stop mid-thought feel cut off
+    and hurt watch-through. Unpunctuated transcripts return True (no signal)."""
+    last = None
+    for seg in segments:
+        s0 = float(seg.get("start", 0.0))
+        if s0 < end and (last is None or s0 > float(last.get("start", 0.0))):
+            last = seg
+    if last is None:
+        return True
+    text = (last.get("text") or "").strip()
+    if not any(ch in (sg.get("text") or "") for sg in segments for ch in ".?!"):
+        return True
+    if float(last.get("end", 0.0)) - end > tol:
+        return False
+    return text[-1:] in ".?!\"')”»"
+
+
 def _adjust_score(llm_score, stats):
     """Blend the model's score with measured delivery: heavy dead air or a very
     slow pace costs points (viewers swipe), a brisk conversational pace earns a
@@ -145,6 +165,8 @@ def _adjust_score(llm_score, stats):
         adj -= 5
     if stats.get("lead_in", 0) > 1.5:
         adj -= 4
+    if stats.get("clean_end") is False:
+        adj -= 3
     if stats["wps"] < 1.2:
         adj -= 5
     elif 2.2 <= stats["wps"] <= 3.8:
@@ -332,6 +354,8 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
         score = min(100, max(0, score))
 
         stats = _speech_stats(start, end, transcript.get("segments", []))
+        clean_end = _ends_clean(end, transcript.get("segments", []))
+        stats["clean_end"] = clean_end
         clips.append({
             "slug": slug,
             "title": title,
@@ -344,6 +368,7 @@ def pick_highlights(job_dir: str, n: int = 6, guidance: str = "") -> list:
             "speech_rate": stats["wps"],
             "dead_air": stats["dead_air"],
             "lead_in": stats["lead_in"],
+            "clean_end": clean_end,
             "start": round(start, 2),
             "end": round(end, 2),
             "render": {

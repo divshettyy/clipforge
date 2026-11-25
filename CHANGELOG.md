@@ -5,6 +5,8 @@ file as the tool evolves.
 
 ## Unreleased
 
+- **Clean-ending signal**: clips now report `clean_end`; picks that stop mid-sentence (last transcript segment runs past the cut or lacks terminal punctuation) lose 3 score points. Unpunctuated transcripts are unaffected. 4 new tests.
+
 - **Truncation-proof highlight parsing**: if the model's reply is cut off mid-array (token limit), complete picks are now salvaged instead of failing the job. Over-long picks are trimmed to the last transcript segment end within 60 s rather than a hard mid-word cut. 3 new tests.
 
 - **API hardening**: `POST /api/jobs` now validates input via new `validation.py` — only http(s) URLs accepted (blocks `file://` and local paths reaching yt-dlp), clip count clamped to 1–20 (was unbounded, could blow up the LLM prompt), guidance capped at 2000 chars. Non-JSON-object bodies no longer crash. 3 new test classes.
